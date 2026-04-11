@@ -9,16 +9,26 @@ Thanks for contributing to `httpi`.
 - read [`README.md`](README.md)
 - read [`docs/product.md`](docs/product.md)
 - read [`docs/architecture.md`](docs/architecture.md)
-- check open issues or start a discussion before large changes
+- scan [`docs/roadmap.md`](docs/roadmap.md) for the current priorities so you do not duplicate planned work
+- read [`testing/httpi/README.md`](testing/httpi/README.md) before changing fixtures, judge assets, or end-to-end behavior
+- check open issues before large changes so your proposal lines up with the roadmap and active discussions
 
 ## Local setup
 
 ```bash
 pnpm install
-pnpm lint
-pnpm typecheck
-pnpm build
+pnpm check
+pnpm test
 ```
+
+## Local development loop
+
+For most non-trivial changes, the expected local loop is:
+
+1. make the code or docs change
+2. run `pnpm check`
+3. run `pnpm test`
+4. exercise the fixture project under `testing/httpi/fixtures/basic-project` when the change affects CLI, MCP, runtime semantics, or documentation examples
 
 ## Working conventions
 
@@ -40,6 +50,15 @@ For non-trivial changes:
 3. describe how the change was validated
 4. update docs when behavior or architecture changed
 
+Changes that touch the public surface should update the relevant canonical documents in the same PR:
+
+- `README.md` for repository entrypoint and quick-start behavior
+- `CHANGELOG.md` for user-visible changes in the current release line
+- `docs/product.md` for user-facing product promises
+- `docs/architecture.md` for technical contracts and semantics
+- `packages/contracts/schemas/` and `.vscode/settings.json` when tracked YAML authoring rules change
+- `testing/httpi/README.md` and `testing/httpi/judge/basic-flow.md` when acceptance behavior changes
+
 ## Commits
 
 Use Conventional Commits where practical:
@@ -59,3 +78,5 @@ Good early contributions include:
 - schema and validation work
 - runtime safety and redaction improvements
 - CLI and MCP parity improvements
+
+Maintainers favor small, reviewable changes that strengthen the current v0 story. If you are proposing a larger feature, anchor it to the roadmap and explain how it preserves the existing guardrails around thin adapters, tracked intent, and explicit runtime behavior.

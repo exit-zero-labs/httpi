@@ -1,0 +1,14 @@
+kind: request
+title: Get user
+method: GET
+url: "{{baseUrl}}/users/{{userId}}"
+uses:
+  headers:
+    - common/json
+  auth: common/bearer
+expect:
+  status: 200
+extract:
+  userName:
+    from: $.name
+    required: true

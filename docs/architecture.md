@@ -2,7 +2,7 @@
 
 # httpi - Technical Architecture
 
-**Status**: Draft  
+**Status**: Current v0  
 **Audience**: Contributors implementing the system  
 **Companion docs**: [`product.md`](product.md), [`archive-architecture.md`](archive-architecture.md), [`roadmap.md`](roadmap.md)
 
@@ -83,7 +83,7 @@ The architecture is built around four constraints:
 | ---------------------- | ----------------------------------------------------------------------- |
 | `apps/cli`             | Human-facing CLI entrypoint, console UX, exit codes                     |
 | `apps/mcp`             | MCP server entrypoint and tool adapters                                 |
-| `packages/contracts`   | Cross-boundary schemas, DTOs, events, result payloads                   |
+| `packages/contracts`   | Cross-boundary schemas, DTOs, events, result payloads, and YAML schemas |
 | `packages/definitions` | Project discovery, YAML loading, validation, path-derived identity      |
 | `packages/http`        | Request execution, body encoding, transport concerns                    |
 | `packages/runtime`     | Session persistence, locking, artifact writing, redaction-aware storage |
@@ -158,6 +158,12 @@ Reference rules:
 - step IDs must be unique across the compiled run
 - extracted values are referenced explicitly as `{{steps.<stepId>.<field>}}`
 
+### 6.4 Editor and schema support
+
+- tracked YAML authoring schemas live under `packages/contracts/schemas/`
+- `.vscode/settings.json` maps repository and fixture `httpi/**/*.yaml` files to those schemas for contributors
+- `httpi init` writes `yaml-language-server` `$schema` comments into the starter config, env, request, and run files so generated projects can pick up validation immediately
+
 ## 7. Definition model
 
 ### 7.1 Project config
@@ -218,8 +224,12 @@ expect:
   status: 200
 
 extract:
+  sessionValue:
+    from: $.token
+    required: true
+    secret: true
   userName:
-    from: $.name
+    from: $.profile.name
     required: true
 ```
 
@@ -230,6 +240,7 @@ Request rules:
 - body files resolve relative to `httpi/bodies/`
 - inline request headers override block-derived headers
 - auth is either inline or block-based in v0, not both
+- extracted values can set `secret: true` to preserve redaction for generic aliases in session and artifact output
 - failed expectations still write artifacts when a response exists
 
 ### 7.4 Run definitions
@@ -358,6 +369,7 @@ Key rules:
 - `failed -> running` requires an explicit resume
 - `interrupted` means delivery may be ambiguous and the engine must not guess
 - resume uses the persisted compiled snapshot, not freshly re-read tracked files
+- recovery is intentionally operator-driven: the engine persists evidence for inspection and explicit retry, but it does not auto-replay ambiguous delivery
 
 ### 8.4 Variable resolution
 
@@ -373,6 +385,15 @@ Flat variable precedence, highest to lowest:
 6. project config defaults
 
 Extracted values are intentionally not merged into the flat precedence chain. They are only referenced explicitly through `steps.<stepId>.<field>` so provenance stays clear.
+
+Request extractions use a deliberately small JSONPath subset in v0:
+
+- `$`
+- `$.field`
+- `$.field.nested`
+- `$.items[0]`
+
+Wildcards, filters, recursive descent, and other multi-match forms are intentionally out of scope for the current implementation.
 
 ### 8.5 Secret resolution
 
@@ -439,7 +460,8 @@ Rules:
 - children may start in any order
 - each child still emits ordered per-step attempt events
 - completed child artifacts survive if a sibling fails
-- if one child fails, running siblings are cancelled
+- children already in flight are allowed to finish in v0 so inspection stays deterministic
+- the parent parallel node fails if any child fails
 - the parent parallel node completes only after child states are persisted
 
 ### 9.5 Pause and resume
@@ -451,12 +473,13 @@ Rules:
 - a pause step writes session state and exits before the next step
 - resuming a paused session starts at `nextStepId`
 - resuming a failed session re-attempts the failed step
+- failed-session recovery is explicit by design; v0 does not auto-retry behind the operator's back
 - env values are frozen in the compiled snapshot, so env drift blocks normal resume
 - new env or input overrides are not accepted during resume in v0
 - secrets are re-resolved only for steps that have not started yet
 - incompatible session or artifact schema versions block resume
 - file drift blocks normal resume unless the interface deliberately supports stored-snapshot execution
-- interrupted sessions are not resumable in v0 because delivery may be ambiguous
+- interrupted sessions are not resumable in v0 because delivery may be ambiguous and the operator should start a new run
 
 ### 9.6 Persistence and locking
 
@@ -513,9 +536,9 @@ Required lifecycle event fields:
 Initial CLI surface:
 
 | Command                            | Purpose                                                 |
-| ---------------------------------- | ------------------------------------------------------- | ---- | --------- | ----------------------------------------- |
+| ---------------------------------- | ------------------------------------------------------- |
 | `httpi init`                       | Scaffold required tracked files and update `.gitignore` |
-| `httpi list requests               | runs                                                    | envs | sessions` | Discover project definitions and sessions |
+| `httpi list [requests|runs|envs|sessions]` | Discover project definitions and sessions      |
 | `httpi validate`                   | Validate definitions and references                     |
 | `httpi describe --request <id>`    | Show resolved request shape without executing           |
 | `httpi describe --run <id>`        | Show compiled run structure and step order              |
@@ -524,6 +547,7 @@ Initial CLI surface:
 | `httpi resume <sessionId>`         | Resume a paused or failed session                       |
 | `httpi session show <sessionId>`   | Show state, drift info, and next step                   |
 | `httpi artifacts list <sessionId>` | List artifact paths                                     |
+| `httpi artifacts read <sessionId> <relativePath>` | Read one captured artifact              |
 | `httpi explain variables ...`      | Show effective values and provenance                    |
 
 Stable exit code targets:
@@ -570,8 +594,8 @@ The same engine must back both interfaces.
 - `.httpi/` must be Git-ignored
 - `httpi init` must add `.httpi/` to `.gitignore`
 - tracked files must not contain secret literals in known secret-bearing fields
-- `.httpi/secrets.yaml`, sessions, and artifacts should be owner-readable only when supported
-- redaction covers request headers, response headers, extraction results, sensitive JSON paths, and error strings
+- runtime-owned session and artifact files should be owner-readable only when supported
+- public inspection surfaces should redact request headers, response headers, secret-looking extracted values, and secret-bearing strings
 - MCP artifact reads obey the same redaction policy as CLI output
 
 ### 12.2 Reliability
@@ -581,6 +605,7 @@ The same engine must back both interfaces.
 - on-disk sessions and artifacts carry schema versions
 - definition hashes detect drift between run start and resume
 - failed responses still retain inspectable metadata and artifacts when available
+- v0 intentionally uses local file locks and explicit operator retries instead of automatic retry orchestration
 
 ### 12.3 Observability
 
@@ -613,6 +638,7 @@ Canonical acceptance flows should cover:
 - single request hello-world
 - login then fetch
 - parallel reads
+- describe and explain-before-run inspection
 - pause then resume
 - sensitive request with redaction
 - CLI and MCP parity

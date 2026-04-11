@@ -1,0 +1,36 @@
+kind: run
+title: Smoke
+env: dev
+steps:
+  - kind: request
+    id: login
+    uses: auth/login
+    with:
+      email: dev@example.com
+      password: "{{secrets.devPassword}}"
+
+  - kind: parallel
+    id: fetch-context
+    steps:
+      - kind: request
+        id: get-user
+        uses: users/get-user
+        with:
+          authToken: "{{steps.login.sessionValue}}"
+          userId: "123"
+      - kind: request
+        id: list-orders
+        uses: orders/list-orders
+        with:
+          authToken: "{{steps.login.sessionValue}}"
+
+  - kind: pause
+    id: inspect-after-fetch
+    reason: Inspect fetched artifacts before mutation
+
+  - kind: request
+    id: touch-user
+    uses: users/touch-user
+    with:
+      authToken: "{{steps.login.sessionValue}}"
+      userId: "123"

@@ -1,0 +1,9 @@
+kind: request
+title: Ping
+method: GET
+url: "{{baseUrl}}/ping"
+uses:
+  headers:
+    - common/json
+expect:
+  status: 200

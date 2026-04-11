@@ -1,0 +1,7 @@
+kind: run
+title: Smoke
+env: dev
+steps:
+  - kind: request
+    id: ping
+    uses: ping

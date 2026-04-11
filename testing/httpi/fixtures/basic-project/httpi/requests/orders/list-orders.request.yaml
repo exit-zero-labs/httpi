@@ -1,0 +1,14 @@
+kind: request
+title: List orders
+method: GET
+url: "{{baseUrl}}/orders"
+uses:
+  headers:
+    - common/json
+  auth: common/bearer
+expect:
+  status: 200
+extract:
+  firstOrderId:
+    from: $.orders[0].id
+    required: true

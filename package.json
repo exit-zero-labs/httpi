@@ -34,7 +34,7 @@
     "lint": "pnpm exec biome lint .",
     "format": "pnpm exec biome format --write .",
     "format:check": "pnpm exec biome check .",
-    "test": "node --eval \"console.log('No automated tests have been added yet. See testing/httpi/.');\"",
+    "test": "pnpm build && node --test testing/httpi/httpi.e2e.test.mjs testing/httpi/httpi.unit.test.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "devDependencies": {

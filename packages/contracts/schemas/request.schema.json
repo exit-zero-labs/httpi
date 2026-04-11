@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json",
+  "title": "httpi request definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "method", "url"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "request"
+    },
+    "title": {
+      "type": "string"
+    },
+    "method": {
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+    },
+    "url": {
+      "type": "string",
+      "minLength": 1
+    },
+    "uses": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auth": {
+          "type": "string"
+        }
+      }
+    },
+    "defaults": {
+      "$ref": "#/$defs/flatVariableMap"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "auth": {
+      "$ref": "#/$defs/authDefinition"
+    },
+    "body": {
+      "$ref": "#/$defs/requestBody"
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "extract": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from"],
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "secret": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "timeoutMs": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  },
+  "$defs": {
+    "flatValue": {
+      "type": ["string", "number", "boolean", "null"]
+    },
+    "flatVariableMap": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/flatValue"
+      }
+    },
+    "jsonValue": {
+      "oneOf": [
+        {
+          "type": ["string", "number", "boolean", "null"]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        }
+      ]
+    },
+    "authDefinition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scheme", "token"],
+          "properties": {
+            "scheme": {
+              "const": "bearer"
+            },
+            "token": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scheme", "username", "password"],
+          "properties": {
+            "scheme": {
+              "const": "basic"
+            },
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scheme", "header", "value"],
+          "properties": {
+            "scheme": {
+              "const": "header"
+            },
+            "header": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "requestBody": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "contentType": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["json"],
+          "properties": {
+            "json": {
+              "$ref": "#/$defs/jsonValue"
+            },
+            "contentType": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "contentType": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

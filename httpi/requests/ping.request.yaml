@@ -1,0 +1,6 @@
+kind: request
+title: Ping
+method: GET
+url: "{{baseUrl}}/ping"
+expect:
+  status: 200

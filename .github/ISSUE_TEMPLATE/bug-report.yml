@@ -1,0 +1,47 @@
+name: Bug report
+description: Report incorrect behavior, safety problems, or broken workflows in httpi.
+labels:
+  - type/bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve `httpi`.
+
+        Please include the smallest reproduction you can, especially if the issue involves request definitions, pause/resume behavior, artifacts, or MCP parity.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and the command or workflow that triggered it.
+      placeholder: "`httpi run --run smoke` paused, but `resume` failed with ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Share the exact steps, commands, fixture changes, or files needed to reproduce the problem.
+      placeholder: |
+        1. Run ...
+        2. Edit ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Node version, and whether you were using the CLI, MCP server, or both.
+      placeholder: "macOS 15, Node 24, CLI only"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Relevant output or artifacts
+      description: Paste sanitized stderr, JSON output, diagnostics, or artifact paths that help explain the issue.

@@ -5,10 +5,10 @@
   "description": "Definition loading and validation for httpi.",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "default": "./dist/index.js"
     }
   },
@@ -18,5 +18,10 @@
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@e0l/httpi-contracts": "workspace:*",
+    "@e0l/httpi-shared": "workspace:*",
+    "yaml": "^2.8.3"
   }
 }

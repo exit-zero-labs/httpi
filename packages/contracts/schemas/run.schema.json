@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/run.schema.json",
+  "title": "httpi run definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "steps"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "run"
+    },
+    "title": {
+      "type": "string"
+    },
+    "env": {
+      "type": "string"
+    },
+    "inputs": {
+      "$ref": "#/$defs/flatVariableMap"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runStep"
+      }
+    }
+  },
+  "$defs": {
+    "flatValue": {
+      "type": ["string", "number", "boolean", "null"]
+    },
+    "flatVariableMap": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/flatValue"
+      }
+    },
+    "requestStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "uses"],
+      "properties": {
+        "kind": {
+          "const": "request"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uses": {
+          "type": "string",
+          "minLength": 1
+        },
+        "with": {
+          "$ref": "#/$defs/flatVariableMap"
+        }
+      }
+    },
+    "parallelStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "steps"],
+      "properties": {
+        "kind": {
+          "const": "parallel"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/requestStep"
+          }
+        }
+      }
+    },
+    "pauseStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "reason"],
+      "properties": {
+        "kind": {
+          "const": "pause"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runStep": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/requestStep"
+        },
+        {
+          "$ref": "#/$defs/parallelStep"
+        },
+        {
+          "$ref": "#/$defs/pauseStep"
+        }
+      ]
+    }
+  }
+}

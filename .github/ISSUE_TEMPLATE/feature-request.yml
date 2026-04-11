@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a focused improvement to httpi's product, CLI/MCP UX, or runtime behavior.
+labels:
+  - type/feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest an improvement.
+
+        `httpi` is intentionally opinionated, so the most helpful requests explain the workflow problem first and then describe the proposed change.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What workflow problem are you trying to solve?
+      placeholder: "I want agents to inspect ... before ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      placeholder: "Add a command/tool/field that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Share any workaround, competing tool behavior, or adjacent idea you considered.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Why would this matter?
+      description: Explain the value for humans, agents, contributors, or CI workflows.

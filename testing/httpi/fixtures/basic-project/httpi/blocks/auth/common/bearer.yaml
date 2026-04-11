@@ -1,0 +1,4 @@
+title: Bearer auth
+auth:
+  scheme: bearer
+  token: "{{authToken}}"

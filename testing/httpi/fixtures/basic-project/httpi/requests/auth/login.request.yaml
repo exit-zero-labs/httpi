@@ -1,0 +1,17 @@
+kind: request
+title: Login
+method: POST
+url: "{{baseUrl}}/auth/login"
+uses:
+  headers:
+    - common/json
+body:
+  file: auth/login.json
+  contentType: application/json
+expect:
+  status: 200
+extract:
+  sessionValue:
+    from: $.token
+    required: true
+    secret: true

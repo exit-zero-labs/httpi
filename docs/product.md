@@ -2,7 +2,7 @@
 
 # httpi - Product Overview
 
-**Status**: Draft  
+**Status**: Current v0  
 **Audience**: Humans first; still useful context for AI agents  
 **Companion docs**: [`architecture.md`](architecture.md), [`archive-architecture.md`](archive-architecture.md), [`idea.md`](idea.md)
 
@@ -79,6 +79,29 @@ A run file wires requests together, including sequential steps, parallel groups,
 
 The CLI and MCP surfaces should expose the same definitions, the same session model, the same artifacts, and the same safety rules.
 
+### Compared with GUI-first API clients
+
+`httpi` is not trying to be a Postman-style desktop workspace inside your repository. It is optimized for a narrower but very practical workflow: versioned request intent, explicit orchestration, local runtime artifacts, and agent-friendly inspection.
+
+| Concern | GUI-first API client | `httpi` |
+| ------- | -------------------- | ------- |
+| Source of truth | local collection or synced workspace | tracked files in the repo |
+| Runtime state | hidden inside the client or cloud workspace | explicit under `.httpi/` |
+| Pause and resume | usually manual and ad hoc | explicit run step and resumable session |
+| AI-agent inspection | depends on the client session | same workflow through CLI and MCP |
+| Reviewability | export or screenshot after the fact | diff the request and run files directly |
+
+### Where it fits best right now
+
+`httpi` is a strong fit when:
+
+- API validation belongs in the same repository as the code under test
+- a human or coding agent needs to inspect artifacts before a mutating step continues
+- teams want predictable, reviewable YAML instead of hidden collection state
+- CLI automation and MCP-based tooling should share one execution contract
+
+If the primary need is a polished GUI collection editor, hosted collaboration, or importer-heavy workflow migration, a GUI-first tool may be a better fit today.
+
 ## 6. The user experience goal
 
 The first useful experience should stay small.
@@ -98,16 +121,26 @@ httpi/
 
 The “power-user” experience comes later from composition, not from up-front ceremony.
 
+In practice, the first useful workflow should include:
+
+1. `init`
+2. `validate`
+3. `describe`
+4. `explain variables`
+5. `run`
+6. `session` and `artifacts` inspection
+7. `resume` when a run intentionally pauses
+
 ## 7. Core concepts
 
-| Concept | What it means |
-| --- | --- |
-| **Project** | A repository that contains tracked `httpi/` definitions |
-| **Environment** | Non-secret values for a named context like `dev` or `staging` |
-| **Request** | One HTTP interaction |
-| **Run** | A multi-step workflow composed of request, parallel, and pause steps |
-| **Session** | The persisted runtime record of one run execution |
-| **Artifacts** | Captured request/response metadata and bodies written under `.httpi/` |
+| Concept         | What it means                                                         |
+| --------------- | --------------------------------------------------------------------- |
+| **Project**     | A repository that contains tracked `httpi/` definitions               |
+| **Environment** | Non-secret values for a named context like `dev` or `staging`         |
+| **Request**     | One HTTP interaction                                                  |
+| **Run**         | A multi-step workflow composed of request, parallel, and pause steps  |
+| **Session**     | The persisted runtime record of one run execution                     |
+| **Artifacts**   | Captured request/response metadata and bodies written under `.httpi/` |
 
 ## 8. Golden-path workflow
 
@@ -169,6 +202,12 @@ The initial version is intentionally focused.
 - importers from Postman, Bruno, or OpenAPI
 - broad retry automation
 
+### 0.1.x stability note
+
+`httpi` is still pre-1.0, but the current 0.1.x line is intended to keep the core tracked file model, CLI/MCP workflow, and pause/resume inspection flow recognizable and stable while adoption and hardening work continues.
+
+User-visible changes inside that line are tracked in [`../CHANGELOG.md`](../CHANGELOG.md).
+
 ## 12. Open-source posture
 
 `httpi` is being set up as an open-source Exit Zero Labs project.
@@ -181,6 +220,8 @@ That means the repo should optimize for:
 - consistent AI-assistant instructions
 - standard community files
 - a minimal but real workspace scaffold
+
+The near-term implementation priorities for that open-source posture live in [`docs/roadmap.md`](roadmap.md).
 
 ## 13. What success looks like
 

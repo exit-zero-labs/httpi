@@ -1,0 +1,14 @@
+kind: request
+title: Touch user
+method: POST
+url: "{{baseUrl}}/users/{{userId}}/touch"
+uses:
+  headers:
+    - common/json
+  auth: common/bearer
+body:
+  json:
+    note: "visited by {{steps.get-user.userName}}"
+  contentType: application/json
+expect:
+  status: 200

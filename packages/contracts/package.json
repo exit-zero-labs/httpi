@@ -5,15 +5,22 @@
   "description": "Shared contracts for httpi.",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./schemas/config.schema.json": "./schemas/config.schema.json",
+    "./schemas/env.schema.json": "./schemas/env.schema.json",
+    "./schemas/header-block.schema.json": "./schemas/header-block.schema.json",
+    "./schemas/auth-block.schema.json": "./schemas/auth-block.schema.json",
+    "./schemas/request.schema.json": "./schemas/request.schema.json",
+    "./schemas/run.schema.json": "./schemas/run.schema.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "schemas"
   ],
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
