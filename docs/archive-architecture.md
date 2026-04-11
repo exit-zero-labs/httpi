@@ -192,7 +192,7 @@ An AI agent should be able to:
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ Interfaces                                                  │
-│  apps/httpi-cli                apps/httpi-mcp               │
+│  apps/cli                apps/mcp               │
 └──────────────────────┬──────────────────────┬───────────────┘
                        │                      │
                        └──────────┬───────────┘
@@ -225,16 +225,16 @@ Core idea:
 
 The repository is already scaffolded as a pnpm turborepo. v0 should keep the package graph small and explicit.
 
-| Path | Responsibility |
-| --- | --- |
-| `apps/httpi-cli` | Human-facing CLI entrypoint, console rendering, exit codes |
-| `apps/httpi-mcp` | MCP server entrypoint and tool adapters |
-| `packages/contracts` | Public engine-facing schemas, events, result payloads, and interface DTOs consumed by CLI, MCP, and tests |
-| `packages/definitions` | YAML parsing, validation, project discovery, identity/reference resolution |
-| `packages/http` | HTTP transport, auth application, body encoding, request execution |
-| `packages/runtime` | Session persistence, locking, artifact writing, resume safety |
-| `packages/execution` | Run compilation, scheduling, variable resolution, orchestration |
-| `packages/shared` | Small leaf utilities with no HTTP, runtime, execution, or definition semantics |
+| Path                   | Responsibility                                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `apps/cli`             | Human-facing CLI entrypoint, console rendering, exit codes                                                |
+| `apps/mcp`             | MCP server entrypoint and tool adapters                                                                   |
+| `packages/contracts`   | Public engine-facing schemas, events, result payloads, and interface DTOs consumed by CLI, MCP, and tests |
+| `packages/definitions` | YAML parsing, validation, project discovery, identity/reference resolution                                |
+| `packages/http`        | HTTP transport, auth application, body encoding, request execution                                        |
+| `packages/runtime`     | Session persistence, locking, artifact writing, resume safety                                             |
+| `packages/execution`   | Run compilation, scheduling, variable resolution, orchestration                                           |
+| `packages/shared`      | Small leaf utilities with no HTTP, runtime, execution, or definition semantics                            |
 
 ### Package rules
 
@@ -247,14 +247,14 @@ The repository is already scaffolded as a pnpm turborepo. v0 should keep the pac
 
 ### 7.1 Package ownership matrix
 
-| Package | Owns | Must not own |
-| --- | --- | --- |
-| `packages/contracts` | public DTOs, JSON schemas, lifecycle events, session/result payloads | file IO, YAML parsing, HTTP transport, business logic |
-| `packages/definitions` | project discovery, path-derived IDs, YAML loading, validation, reference resolution | scheduling, artifact writing, CLI rendering |
-| `packages/http` | request execution, body encoding, auth application, transport concerns | session persistence, run scheduling, interface payload shaping |
-| `packages/runtime` | sessions, locks, manifests, artifacts, redaction-aware persistence | YAML parsing, scheduling policy, console/MCP presentation |
-| `packages/execution` | run compilation, variable resolution, orchestration, pause/resume behavior | low-level HTTP transport details, console formatting |
-| `packages/shared` | generic leaf helpers like path, hash, fs, or collection utilities | domain models, execution policy, validation rules |
+| Package                | Owns                                                                                | Must not own                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `packages/contracts`   | public DTOs, JSON schemas, lifecycle events, session/result payloads                | file IO, YAML parsing, HTTP transport, business logic          |
+| `packages/definitions` | project discovery, path-derived IDs, YAML loading, validation, reference resolution | scheduling, artifact writing, CLI rendering                    |
+| `packages/http`        | request execution, body encoding, auth application, transport concerns              | session persistence, run scheduling, interface payload shaping |
+| `packages/runtime`     | sessions, locks, manifests, artifacts, redaction-aware persistence                  | YAML parsing, scheduling policy, console/MCP presentation      |
+| `packages/execution`   | run compilation, variable resolution, orchestration, pause/resume behavior          | low-level HTTP transport details, console formatting           |
+| `packages/shared`      | generic leaf helpers like path, hash, fs, or collection utilities                   | domain models, execution policy, validation rules              |
 
 ### 7.2 Workspace rules
 
@@ -297,18 +297,18 @@ repo/
 
 ### 8.2 File types
 
-| Path | Purpose |
-| --- | --- |
-| `httpi/config.yaml` | Project defaults, capture policy, redaction policy |
-| `httpi/env/*.env.yaml` | Named environment values |
-| `httpi/blocks/headers/**/*.yaml` | Reusable header blocks |
-| `httpi/blocks/auth/**/*.yaml` | Reusable auth blocks |
-| `httpi/bodies/**` | Reusable body payload files |
-| `httpi/requests/**/*.request.yaml` | Atomic request definitions |
-| `httpi/runs/**/*.run.yaml` | Execution plans |
-| `.httpi/secrets.yaml` | Local secret aliases, Git-ignored |
-| `.httpi/sessions/*.json` | Persisted session snapshots |
-| `.httpi/responses/<sessionId>/...` | Captured runtime artifacts |
+| Path                               | Purpose                                            |
+| ---------------------------------- | -------------------------------------------------- |
+| `httpi/config.yaml`                | Project defaults, capture policy, redaction policy |
+| `httpi/env/*.env.yaml`             | Named environment values                           |
+| `httpi/blocks/headers/**/*.yaml`   | Reusable header blocks                             |
+| `httpi/blocks/auth/**/*.yaml`      | Reusable auth blocks                               |
+| `httpi/bodies/**`                  | Reusable body payload files                        |
+| `httpi/requests/**/*.request.yaml` | Atomic request definitions                         |
+| `httpi/runs/**/*.run.yaml`         | Execution plans                                    |
+| `.httpi/secrets.yaml`              | Local secret aliases, Git-ignored                  |
+| `.httpi/sessions/*.json`           | Persisted session snapshots                        |
+| `.httpi/responses/<sessionId>/...` | Captured runtime artifacts                         |
 
 Only `config.yaml`, `env/`, `requests/`, and `runs/` are required in the minimal v0 project. `blocks/` and `bodies/` are optional and only exist when the project needs reuse.
 
@@ -707,25 +707,25 @@ Step states:
 
 Session transition table:
 
-| From | To | Trigger |
-| --- | --- | --- |
-| `created` | `running` | run starts |
-| `running` | `paused` | pause step commits |
-| `running` | `failed` | request, expectation, or extraction failure commits |
-| `running` | `completed` | final step commits successfully |
-| `running` | `interrupted` | process exits before terminal step commit |
-| `paused` | `running` | explicit resume succeeds |
-| `failed` | `running` | explicit resume succeeds |
+| From      | To            | Trigger                                             |
+| --------- | ------------- | --------------------------------------------------- |
+| `created` | `running`     | run starts                                          |
+| `running` | `paused`      | pause step commits                                  |
+| `running` | `failed`      | request, expectation, or extraction failure commits |
+| `running` | `completed`   | final step commits successfully                     |
+| `running` | `interrupted` | process exits before terminal step commit           |
+| `paused`  | `running`     | explicit resume succeeds                            |
+| `failed`  | `running`     | explicit resume succeeds                            |
 
 Step transition table:
 
-| From | To | Trigger |
-| --- | --- | --- |
-| `pending` | `running` | step attempt begins |
-| `running` | `completed` | request, expect, extract, and artifact commit succeed |
-| `running` | `failed` | request, expect, or extract produces terminal failure |
-| `running` | `interrupted` | process exits before terminal commit |
-| `running` | `paused` | only for explicit pause nodes |
+| From      | To            | Trigger                                               |
+| --------- | ------------- | ----------------------------------------------------- |
+| `pending` | `running`     | step attempt begins                                   |
+| `running` | `completed`   | request, expect, extract, and artifact commit succeed |
+| `running` | `failed`      | request, expect, or extract produces terminal failure |
+| `running` | `interrupted` | process exits before terminal commit                  |
+| `running` | `paused`      | only for explicit pause nodes                         |
 
 ### 10.4 Variable resolution
 
@@ -749,13 +749,13 @@ This keeps provenance clear and prevents silent collisions.
 
 Authoritative precedence summary:
 
-| Concern | Highest precedence -> lowest precedence | Notes |
-| --- | --- | --- |
+| Concern        | Highest precedence -> lowest precedence                                                               | Notes                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | flat variables | CLI/MCP overrides -> step `with` -> run `inputs` -> request defaults -> env values -> config defaults | extracted values are explicit only via `steps.<stepId>.<field>` |
-| headers | inline request headers -> later listed header blocks -> earlier listed header blocks | header names are matched case-insensitively |
-| auth | inline request `auth` or `uses.auth` | mutually exclusive in v0 |
-| body | request-local inline body or request-local body file | no body blocks in v0 |
-| params | request-local params with interpolated values | no param blocks in v0 |
+| headers        | inline request headers -> later listed header blocks -> earlier listed header blocks                  | header names are matched case-insensitively                     |
+| auth           | inline request `auth` or `uses.auth`                                                                  | mutually exclusive in v0                                        |
+| body           | request-local inline body or request-local body file                                                  | no body blocks in v0                                            |
+| params         | request-local params with interpolated values                                                         | no param blocks in v0                                           |
 
 ### 10.5 Secret resolution
 
@@ -953,19 +953,19 @@ The CLI is the human-facing adapter over the shared engine.
 
 Initial command surface:
 
-| Command | Purpose |
-| --- | --- |
-| `httpi init` | Scaffold required tracked files and update `.gitignore` |
-| `httpi list requests|runs|envs|sessions` | Discover project definitions and sessions |
-| `httpi validate` | Validate definitions and references |
-| `httpi describe --request <id>` | Show the resolved definition shape without executing |
-| `httpi describe --run <id>` | Show compiled run structure and step order |
-| `httpi run --request <id>` | Execute a single request |
-| `httpi run --run <id>` | Execute a run |
-| `httpi resume <sessionId>` | Resume a paused or failed session |
-| `httpi session show <sessionId>` | Show session state, drift info, and next step |
-| `httpi artifacts list <sessionId>` | List artifact paths |
-| `httpi explain variables ...` | Show variable provenance and effective values |
+| Command                            | Purpose                                                 |
+| ---------------------------------- | ------------------------------------------------------- | ---- | --------- | ----------------------------------------- |
+| `httpi init`                       | Scaffold required tracked files and update `.gitignore` |
+| `httpi list requests               | runs                                                    | envs | sessions` | Discover project definitions and sessions |
+| `httpi validate`                   | Validate definitions and references                     |
+| `httpi describe --request <id>`    | Show the resolved definition shape without executing    |
+| `httpi describe --run <id>`        | Show compiled run structure and step order              |
+| `httpi run --request <id>`         | Execute a single request                                |
+| `httpi run --run <id>`             | Execute a run                                           |
+| `httpi resume <sessionId>`         | Resume a paused or failed session                       |
+| `httpi session show <sessionId>`   | Show session state, drift info, and next step           |
+| `httpi artifacts list <sessionId>` | List artifact paths                                     |
+| `httpi explain variables ...`      | Show variable provenance and effective values           |
 
 Required CLI UX:
 
@@ -988,32 +988,32 @@ The MCP server is the AI-facing adapter over the same engine.
 
 Initial tool surface:
 
-| Tool | Purpose |
-| --- | --- |
-| `list_definitions` | Discover requests, runs, envs, and sessions |
-| `validate_project` | Return validation diagnostics |
-| `describe_request` | Explain a request before execution |
-| `describe_run` | Explain a run, step graph, and dependencies |
-| `run_definition` | Execute a request or run |
-| `resume_session` | Resume a session |
+| Tool                | Purpose                                              |
+| ------------------- | ---------------------------------------------------- |
+| `list_definitions`  | Discover requests, runs, envs, and sessions          |
+| `validate_project`  | Return validation diagnostics                        |
+| `describe_request`  | Explain a request before execution                   |
+| `describe_run`      | Explain a run, step graph, and dependencies          |
+| `run_definition`    | Execute a request or run                             |
+| `resume_session`    | Resume a session                                     |
 | `get_session_state` | Read session state, next step, and drift information |
-| `list_artifacts` | Enumerate artifacts for a session or step |
-| `read_artifact` | Read a captured artifact subject to redaction policy |
-| `explain_variables` | Return effective values and provenance |
+| `list_artifacts`    | Enumerate artifacts for a session or step            |
+| `read_artifact`     | Read a captured artifact subject to redaction policy |
+| `explain_variables` | Return effective values and provenance               |
 
 ### 13.3 CLI/MCP parity contract
 
 The same engine must back both interfaces.
 
-| Capability | CLI | MCP | Shared contract |
-| --- | --- | --- | --- |
-| list definitions | `httpi list ...` | `list_definitions` | same IDs and metadata |
-| validate project | `httpi validate` | `validate_project` | same diagnostics schema |
-| describe before run | `httpi describe ...` | `describe_request`, `describe_run` | same compiled model fields |
-| execute | `httpi run ...` | `run_definition` | same session/result schema |
-| resume | `httpi resume ...` | `resume_session` | same drift and lock rules |
-| inspect session | `httpi session show ...` | `get_session_state` | same state machine |
-| inspect artifacts | `httpi artifacts ...` | `list_artifacts`, `read_artifact` | same redaction policy |
+| Capability          | CLI                      | MCP                                | Shared contract            |
+| ------------------- | ------------------------ | ---------------------------------- | -------------------------- |
+| list definitions    | `httpi list ...`         | `list_definitions`                 | same IDs and metadata      |
+| validate project    | `httpi validate`         | `validate_project`                 | same diagnostics schema    |
+| describe before run | `httpi describe ...`     | `describe_request`, `describe_run` | same compiled model fields |
+| execute             | `httpi run ...`          | `run_definition`                   | same session/result schema |
+| resume              | `httpi resume ...`       | `resume_session`                   | same drift and lock rules  |
+| inspect session     | `httpi session show ...` | `get_session_state`                | same state machine         |
+| inspect artifacts   | `httpi artifacts ...`    | `list_artifacts`, `read_artifact`  | same redaction policy      |
 
 ## 14. Security, Reliability, and Observability
 
@@ -1093,14 +1093,14 @@ testing/httpi/
 
 v0 should ship with canonical flows covering:
 
-| Flow | Required assertions |
-| --- | --- |
-| hello world single request | project discovery, validation, response capture |
-| login then fetch | extraction, step-scoped values, auth reuse |
-| parallel reads | stable step IDs, joined completion, sibling failure handling |
-| pause and resume | persisted session, next step, resumed completion |
-| sensitive request | redaction, metadata-only capture |
-| CLI and MCP parity | same session/result/artifact semantics |
+| Flow                       | Required assertions                                          |
+| -------------------------- | ------------------------------------------------------------ |
+| hello world single request | project discovery, validation, response capture              |
+| login then fetch           | extraction, step-scoped values, auth reuse                   |
+| parallel reads             | stable step IDs, joined completion, sibling failure handling |
+| pause and resume           | persisted session, next step, resumed completion             |
+| sensitive request          | redaction, metadata-only capture                             |
+| CLI and MCP parity         | same session/result/artifact semantics                       |
 
 ## 16. Contributor Build Order
 
@@ -1111,8 +1111,8 @@ The first implementation steps should be explicit for a new contributor.
 3. **`packages/http`**: implement single-request execution and body encoding
 4. **`packages/runtime`**: implement atomic session persistence, locking, manifest writing, and redaction-aware artifact capture
 5. **`packages/execution`**: compile run files, resolve variables, schedule sequential and parallel steps, and implement pause/resume
-6. **`apps/httpi-cli`**: implement `validate`, `describe`, `run`, `resume`, and session/artifact inspection
-7. **`apps/httpi-mcp`**: mirror the same execution and inspection surface for agents
+6. **`apps/cli`**: implement `validate`, `describe`, `run`, `resume`, and session/artifact inspection
+7. **`apps/mcp`**: mirror the same execution and inspection surface for agents
 8. **`testing/httpi`**: add canonical fixtures, flows, mock-server coverage, and judge docs
 
 ## 17. Key Decisions

@@ -5,6 +5,7 @@
 <!-- E0L company-wide context (agent personas, architecture decisions, git workflow).
      Available inside dev container via the .e0l symlink -> /workspace-config.
      Silently skipped if not present. -->
+
 @./.e0l/.ai/AI.md
 
 `httpi` is an open-source HTTP client, CLI, and MCP project for defining, executing, pausing, resuming, and inspecting HTTP workflows from a Git-tracked repository.
@@ -42,7 +43,7 @@ pnpm build
    - `.httpi/` is local runtime state and must stay Git-ignored
 
 2. **Thin interface adapters**
-   - `apps/httpi-cli` and `apps/httpi-mcp` stay thin
+   - `apps/cli` and `apps/mcp` stay thin
    - execution logic belongs in shared packages
 
 3. **Request-first authoring**

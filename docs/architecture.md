@@ -53,7 +53,7 @@ The architecture is built around four constraints:
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ Interfaces                                                   │
-│  apps/httpi-cli                apps/httpi-mcp                │
+│  apps/cli                apps/mcp                │
 └──────────────────────┬──────────────────────┬────────────────┘
                        │                      │
                        └──────────┬───────────┘
@@ -79,16 +79,16 @@ The architecture is built around four constraints:
 
 `httpi` uses a pnpm + Turborepo workspace with a deliberately small package graph.
 
-| Path | Responsibility |
-| --- | --- |
-| `apps/httpi-cli` | Human-facing CLI entrypoint, console UX, exit codes |
-| `apps/httpi-mcp` | MCP server entrypoint and tool adapters |
-| `packages/contracts` | Cross-boundary schemas, DTOs, events, result payloads |
-| `packages/definitions` | Project discovery, YAML loading, validation, path-derived identity |
-| `packages/http` | Request execution, body encoding, transport concerns |
-| `packages/runtime` | Session persistence, locking, artifact writing, redaction-aware storage |
-| `packages/execution` | Run compilation, orchestration, variable resolution, pause/resume |
-| `packages/shared` | Small leaf utilities with no domain ownership |
+| Path                   | Responsibility                                                          |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `apps/cli`             | Human-facing CLI entrypoint, console UX, exit codes                     |
+| `apps/mcp`             | MCP server entrypoint and tool adapters                                 |
+| `packages/contracts`   | Cross-boundary schemas, DTOs, events, result payloads                   |
+| `packages/definitions` | Project discovery, YAML loading, validation, path-derived identity      |
+| `packages/http`        | Request execution, body encoding, transport concerns                    |
+| `packages/runtime`     | Session persistence, locking, artifact writing, redaction-aware storage |
+| `packages/execution`   | Run compilation, orchestration, variable resolution, pause/resume       |
+| `packages/shared`      | Small leaf utilities with no domain ownership                           |
 
 ### Package rules
 
@@ -126,18 +126,18 @@ repo/
 
 ### 6.2 File types
 
-| Path | Purpose |
-| --- | --- |
-| `httpi/config.yaml` | Project defaults, capture policy, redaction policy |
-| `httpi/env/*.env.yaml` | Named non-secret environment values |
-| `httpi/blocks/headers/**/*.yaml` | Reusable header blocks |
-| `httpi/blocks/auth/**/*.yaml` | Reusable auth blocks |
-| `httpi/bodies/**` | Reusable request payload files |
-| `httpi/requests/**/*.request.yaml` | Atomic request definitions |
-| `httpi/runs/**/*.run.yaml` | Multi-step execution plans |
-| `.httpi/secrets.yaml` | Local secret aliases, Git-ignored |
-| `.httpi/sessions/*.json` | Persisted session snapshots |
-| `.httpi/responses/<sessionId>/...` | Captured runtime artifacts |
+| Path                               | Purpose                                            |
+| ---------------------------------- | -------------------------------------------------- |
+| `httpi/config.yaml`                | Project defaults, capture policy, redaction policy |
+| `httpi/env/*.env.yaml`             | Named non-secret environment values                |
+| `httpi/blocks/headers/**/*.yaml`   | Reusable header blocks                             |
+| `httpi/blocks/auth/**/*.yaml`      | Reusable auth blocks                               |
+| `httpi/bodies/**`                  | Reusable request payload files                     |
+| `httpi/requests/**/*.request.yaml` | Atomic request definitions                         |
+| `httpi/runs/**/*.run.yaml`         | Multi-step execution plans                         |
+| `.httpi/secrets.yaml`              | Local secret aliases, Git-ignored                  |
+| `.httpi/sessions/*.json`           | Persisted session snapshots                        |
+| `.httpi/responses/<sessionId>/...` | Captured runtime artifacts                         |
 
 ### 6.3 Identity and references
 
@@ -512,19 +512,19 @@ Required lifecycle event fields:
 
 Initial CLI surface:
 
-| Command | Purpose |
-| --- | --- |
-| `httpi init` | Scaffold required tracked files and update `.gitignore` |
-| `httpi list requests|runs|envs|sessions` | Discover project definitions and sessions |
-| `httpi validate` | Validate definitions and references |
-| `httpi describe --request <id>` | Show resolved request shape without executing |
-| `httpi describe --run <id>` | Show compiled run structure and step order |
-| `httpi run --request <id>` | Execute a single request |
-| `httpi run --run <id>` | Execute a run |
-| `httpi resume <sessionId>` | Resume a paused or failed session |
-| `httpi session show <sessionId>` | Show state, drift info, and next step |
-| `httpi artifacts list <sessionId>` | List artifact paths |
-| `httpi explain variables ...` | Show effective values and provenance |
+| Command                            | Purpose                                                 |
+| ---------------------------------- | ------------------------------------------------------- | ---- | --------- | ----------------------------------------- |
+| `httpi init`                       | Scaffold required tracked files and update `.gitignore` |
+| `httpi list requests               | runs                                                    | envs | sessions` | Discover project definitions and sessions |
+| `httpi validate`                   | Validate definitions and references                     |
+| `httpi describe --request <id>`    | Show resolved request shape without executing           |
+| `httpi describe --run <id>`        | Show compiled run structure and step order              |
+| `httpi run --request <id>`         | Execute a single request                                |
+| `httpi run --run <id>`             | Execute a run                                           |
+| `httpi resume <sessionId>`         | Resume a paused or failed session                       |
+| `httpi session show <sessionId>`   | Show state, drift info, and next step                   |
+| `httpi artifacts list <sessionId>` | List artifact paths                                     |
+| `httpi explain variables ...`      | Show effective values and provenance                    |
 
 Stable exit code targets:
 
@@ -538,18 +538,18 @@ Stable exit code targets:
 
 Initial MCP tool surface:
 
-| Tool | Purpose |
-| --- | --- |
-| `list_definitions` | Discover requests, runs, envs, and sessions |
-| `validate_project` | Return validation diagnostics |
-| `describe_request` | Explain a request before execution |
-| `describe_run` | Explain a run, step graph, and dependencies |
-| `run_definition` | Execute a request or run |
-| `resume_session` | Resume a session |
-| `get_session_state` | Read session state and drift info |
-| `list_artifacts` | Enumerate artifacts for a session or step |
-| `read_artifact` | Read a captured artifact subject to redaction policy |
-| `explain_variables` | Return effective values and provenance |
+| Tool                | Purpose                                              |
+| ------------------- | ---------------------------------------------------- |
+| `list_definitions`  | Discover requests, runs, envs, and sessions          |
+| `validate_project`  | Return validation diagnostics                        |
+| `describe_request`  | Explain a request before execution                   |
+| `describe_run`      | Explain a run, step graph, and dependencies          |
+| `run_definition`    | Execute a request or run                             |
+| `resume_session`    | Resume a session                                     |
+| `get_session_state` | Read session state and drift info                    |
+| `list_artifacts`    | Enumerate artifacts for a session or step            |
+| `read_artifact`     | Read a captured artifact subject to redaction policy |
+| `explain_variables` | Return effective values and provenance               |
 
 ### 11.3 Parity contract
 
@@ -626,8 +626,8 @@ The architecture is intentionally staged so contributors can build it incrementa
 3. `packages/http`
 4. `packages/runtime`
 5. `packages/execution`
-6. `apps/httpi-cli`
-7. `apps/httpi-mcp`
+6. `apps/cli`
+7. `apps/mcp`
 8. `testing/httpi`
 
 The detailed phase-by-phase plan belongs in [`roadmap.md`](roadmap.md) once that document is authored.

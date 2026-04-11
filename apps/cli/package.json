@@ -1,11 +1,11 @@
 {
-  "name": "@e0l/httpi-mcp",
+  "name": "@e0l/cli",
   "private": true,
   "version": "0.1.0",
-  "description": "MCP entrypoint for httpi.",
+  "description": "CLI entrypoint for httpi.",
   "type": "module",
   "bin": {
-    "httpi-mcp": "./dist/index.js"
+    "httpi": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

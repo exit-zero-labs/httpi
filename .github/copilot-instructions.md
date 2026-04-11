@@ -6,7 +6,7 @@ Primary repository guidance lives in [`AGENTS.md`](../AGENTS.md) and [`.ai/AI.md
 
 Key rules:
 
-- keep `apps/httpi-cli` and `apps/httpi-mcp` as thin adapters
+- keep `apps/cli` and `apps/mcp` as thin adapters
 - keep tracked request intent in `httpi/` and runtime state in `.httpi/`
 - do not add secret literals to tracked files
 - prefer path-derived IDs and explicit schemas at public boundaries
