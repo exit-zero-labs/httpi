@@ -3,6 +3,7 @@
 
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Build output
 dist/
@@ -10,6 +11,8 @@ build/
 .next/
 out/
 coverage/
+.turbo/
+*.tsbuildinfo
 
 # Environment
 .env
@@ -25,5 +28,10 @@ yarn-error.log*
 
 # Editors
 .idea/
-.vscode/
 *.swp
+
+# Runtime state
+.httpi/
+
+# Misc
+temp/*

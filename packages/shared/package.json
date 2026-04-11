@@ -1,0 +1,22 @@
+{
+  "name": "@e0l/httpi-shared",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Shared leaf utilities for httpi.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "pnpm exec tsc -p tsconfig.json",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  }
+}

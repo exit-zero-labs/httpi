@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/httpi-cli" },
+    { "path": "./apps/httpi-mcp" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/definitions" },
+    { "path": "./packages/execution" },
+    { "path": "./packages/http" },
+    { "path": "./packages/runtime" },
+    { "path": "./packages/shared" }
+  ]
+}

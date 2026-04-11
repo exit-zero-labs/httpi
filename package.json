@@ -1,0 +1,46 @@
+{
+  "name": "httpi",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source file-based HTTP workflows for humans and AI agents.",
+  "license": "MIT",
+  "author": "Exit Zero Labs LLC",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/exit-zero-labs/httpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/exit-zero-labs/httpi/issues"
+  },
+  "homepage": "https://github.com/exit-zero-labs/httpi",
+  "keywords": [
+    "http",
+    "cli",
+    "mcp",
+    "yaml",
+    "api",
+    "testing",
+    "automation",
+    "ai"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "pnpm exec biome lint .",
+    "format": "pnpm exec biome format --write .",
+    "format:check": "pnpm exec biome check .",
+    "test": "node --eval \"console.log('No automated tests have been added yet. See testing/httpi/.');\"",
+    "check": "pnpm lint && pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.11",
+    "@types/node": "^24.12.2",
+    "turbo": "^2.9.6",
+    "typescript": "^5.9.3"
+  }
+}
