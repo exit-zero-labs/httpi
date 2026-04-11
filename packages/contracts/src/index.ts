@@ -274,6 +274,8 @@ export interface CompiledRunSnapshot {
   envHash: string;
   envValues: FlatVariableMap;
   runInputs: FlatVariableMap;
+  overrideKeys?: string[] | undefined;
+  processEnvHashes?: Record<string, string> | undefined;
   definitionHashes: Record<string, string>;
   steps: CompiledRunStep[];
   createdAt: string;

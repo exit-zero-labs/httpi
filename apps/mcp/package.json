@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "bin": {
-    "httpi-mcp": "./dist/index.js"
+    "httpi-mcp": "dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",

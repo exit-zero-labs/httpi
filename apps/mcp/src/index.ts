@@ -1,8 +1,5 @@
 #!/usr/bin/env node
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
 import {
   describeRequest,
   describeRun,
@@ -16,7 +13,14 @@ import {
   runRun,
   validateProject,
 } from "@exit-zero-labs/httpi-execution";
-import { coerceErrorMessage, exitCodes, HttpiError } from "@exit-zero-labs/httpi-shared";
+import {
+  coerceErrorMessage,
+  exitCodes,
+  HttpiError,
+} from "@exit-zero-labs/httpi-shared";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 import packageJson from "../package.json" with { type: "json" };
 
 const flatValueSchema = z.union([
@@ -110,7 +114,7 @@ export function createMcpServer(): McpServer {
     "run_definition",
     {
       description:
-        "Execute a request or run definition using the shared httpi engine.",
+        "Execute a request or run definition using the shared httpi engine. Provide exactly one of requestId or runId.",
       inputSchema: {
         requestId: z.string().optional(),
         runId: z.string().optional(),
@@ -217,7 +221,7 @@ export function createMcpServer(): McpServer {
     "explain_variables",
     {
       description:
-        "Explain effective values and provenance for a request or run step.",
+        "Explain effective values and provenance for a request or run step. Provide requestId or runId; use stepId with runId to focus one step.",
       inputSchema: {
         requestId: z.string().optional(),
         runId: z.string().optional(),
@@ -309,8 +313,54 @@ async function handleTool(action: () => Promise<unknown>): Promise<{
   }
 }
 
+function printUsage(): void {
+  const usage = `httpi-mcp
+
+Usage:
+  httpi-mcp
+  httpi-mcp --help
+  httpi-mcp --version
+
+Transport:
+  stdio
+
+Core tools:
+  list_definitions   Discover requests, runs, envs, and sessions.
+  validate_project   Validate tracked definitions and references.
+  describe_request   Resolve one request without executing it.
+  describe_run       Compile one run and show its step graph.
+  run_definition     Execute a request or run (provide requestId or runId, not both).
+  resume_session     Resume a paused or failed session after drift checks.
+  get_session_state  Read persisted session state and drift details.
+  list_artifacts     List captured artifacts for a session or one step.
+  read_artifact      Read one captured artifact with redaction applied.
+  explain_variables  Show effective values and provenance for a request or run step.
+
+Docs:
+  - README.md in the repository root for the end-to-end workflow
+  - docs/agent-guide.md for agent-specific usage patterns
+`;
+
+  process.stdout.write(`${usage}\n`);
+}
+
 async function main(): Promise<void> {
   try {
+    const argv = process.argv.slice(2);
+    if (argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
+      printUsage();
+      return;
+    }
+
+    if (
+      (argv.length === 1 && argv[0] === "version") ||
+      argv[0] === "--version" ||
+      argv[0] === "-v"
+    ) {
+      process.stdout.write(`${packageJson.version}\n`);
+      return;
+    }
+
     await startMcpServer();
   } catch (error) {
     if (error instanceof HttpiError) {

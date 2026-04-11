@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import type { FlatVariableMap } from "@exit-zero-labs/httpi-contracts";
 import {
   describeRequest,
   describeRun,
@@ -16,15 +17,29 @@ import {
 } from "@exit-zero-labs/httpi-execution";
 import {
   coerceFlatValue,
-  HttpiError,
   exitCodes,
+  HttpiError,
 } from "@exit-zero-labs/httpi-shared";
-import type { FlatVariableMap } from "@exit-zero-labs/httpi-contracts";
+import packageJson from "../package.json" with { type: "json" };
 import { toCliFailure } from "./error.js";
 
 export async function runCli(argv = process.argv.slice(2)): Promise<number> {
-  if (argv.length === 0 || argv[0] === "help" || argv[0] === "--help") {
+  if (
+    argv.length === 0 ||
+    argv[0] === "help" ||
+    argv[0] === "--help" ||
+    argv[0] === "-h"
+  ) {
     printUsage();
+    return exitCodes.success;
+  }
+
+  if (
+    (argv.length === 1 && argv[0] === "version") ||
+    argv[0] === "--version" ||
+    argv[0] === "-v"
+  ) {
+    process.stdout.write(`${packageJson.version}\n`);
     return exitCodes.success;
   }
 
@@ -115,7 +130,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
 
     throw new HttpiError(
       "DESCRIBE_TARGET_REQUIRED",
-      "Use --request <id> or --run <id> with describe.",
+      requiredTargetMessage("describe", "httpi describe --request ping"),
       { exitCode: exitCodes.validationFailure },
     );
   }
@@ -151,7 +166,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
 
     throw new HttpiError(
       "RUN_TARGET_REQUIRED",
-      "Use --request <id> or --run <id> with run.",
+      requiredTargetMessage("run", "httpi run --request ping"),
       { exitCode: exitCodes.validationFailure },
     );
   }
@@ -258,6 +273,16 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     const requestId = parsedArgs.flags.request?.[0];
     const runId = parsedArgs.flags.run?.[0];
     assertSingleTarget(requestId, runId, "explain variables");
+    if (!requestId && !runId) {
+      throw new HttpiError(
+        "EXPLAIN_TARGET_REQUIRED",
+        requiredTargetMessage(
+          "explain variables",
+          "httpi explain variables --request ping",
+        ),
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
     const result = await explainVariables({
       projectRoot,
       requestId,
@@ -281,6 +306,8 @@ function printUsage(): void {
   const usage = `httpi
 
 Usage:
+  httpi --help
+  httpi --version
   httpi init [--project-root <path>]
   httpi list [requests|runs|envs|sessions] [--project-root <path>]
   httpi validate [--project-root <path>]
@@ -294,8 +321,19 @@ Usage:
   httpi artifacts read <sessionId> <relativePath> [--project-root <path>]
   httpi explain variables (--request <id> | --run <id>) [--step <id>] [--env <id>] [--input key=value]
 
+List targets:
+  requests   list tracked request definitions
+  runs       list tracked run definitions
+  envs       list tracked environment definitions
+  sessions   list persisted runtime sessions
+
+Notes:
+  - When --project-root is omitted, httpi discovers the nearest httpi/config.yaml.
+  - Outputs are JSON by default, except list subcommands which print tab-separated rows.
+
 Examples:
   httpi list requests
+  httpi list sessions
   httpi describe --request ping
   httpi run --run smoke
   httpi artifacts list <sessionId>
@@ -384,10 +422,18 @@ function assertSingleTarget(
   if (requestId && runId) {
     throw new HttpiError(
       "TARGET_AMBIGUOUS",
-      `${commandName} accepts either --request <id> or --run <id>, not both.`,
+      `${commandLabel(commandName)} accepts either --request <id> or --run <id>, not both.`,
       { exitCode: exitCodes.validationFailure },
     );
   }
+}
+
+function requiredTargetMessage(commandName: string, example: string): string {
+  return `${commandLabel(commandName)} requires either --request <id> or --run <id>.\nExample: ${example}`;
+}
+
+function commandLabel(commandName: string): string {
+  return `${commandName[0]?.toUpperCase() ?? ""}${commandName.slice(1)} command`;
 }
 
 function writeLines(lines: string[]): void {

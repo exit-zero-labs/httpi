@@ -22,6 +22,12 @@ When reporting an issue, include:
 - reproduction steps
 - expected impact
 
+## Security notes for operators
+
+- `httpi` keeps tracked intent in `httpi/` and runtime-only state in `.httpi/`; `.httpi/` should stay Git-ignored.
+- Runtime secrets belong in `.httpi/secrets.yaml` or supported `$ENV:NAME` references. Missing `$ENV:NAME` errors intentionally reveal the variable name, but never the secret value itself.
+- Session lock files live under `.httpi/sessions/`. If a process crashes and leaves a stale `<sessionId>.lock` behind, remove that lock file only after you confirm no other `httpi` process is still operating on the same session.
+
 ## What to expect
 
 Maintainers will triage the report, confirm impact, and decide on the fix and disclosure process. Please avoid public disclosure until the issue has been reviewed and a mitigation path is ready.

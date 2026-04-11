@@ -2,12 +2,7 @@
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
   "changelog": false,
   "commit": false,
-  "fixed": [
-    [
-      "@exit-zero-labs/httpi",
-      "@exit-zero-labs/httpi-mcp"
-    ]
-  ],
+  "fixed": [["@exit-zero-labs/httpi", "@exit-zero-labs/httpi-mcp"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

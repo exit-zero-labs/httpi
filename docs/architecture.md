@@ -656,4 +656,4 @@ The architecture is intentionally staged so contributors can build it incrementa
 7. `apps/mcp`
 8. `testing/httpi`
 
-The detailed phase-by-phase plan belongs in [`roadmap.md`](roadmap.md) once that document is authored.
+The detailed phase-by-phase plan lives in [`roadmap.md`](roadmap.md) and should stay aligned with the current implementation rather than drift into a separate design universe.

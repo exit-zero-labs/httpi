@@ -14,6 +14,7 @@ out/
 coverage/
 .turbo/
 *.tsbuildinfo
+*.tgz
 
 # Environment
 .env

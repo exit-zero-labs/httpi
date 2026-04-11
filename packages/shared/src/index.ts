@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   open,
-  readFile,
   readdir,
+  readFile,
   rename,
   rm,
   stat,
@@ -125,8 +125,14 @@ function sortValue(value: unknown): unknown {
     }, {});
 }
 
-export function sha256Hex(value: string): string {
+export function sha256Hex(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+const missingProcessEnvSentinel = "\0HTTPI_MISSING_PROCESS_ENV\0";
+
+export function hashProcessEnvValue(value: string | undefined): string {
+  return sha256Hex(value ?? missingProcessEnvSentinel);
 }
 
 export function createSessionId(prefix = "session"): string {

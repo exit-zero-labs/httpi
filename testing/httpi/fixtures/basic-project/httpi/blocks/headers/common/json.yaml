@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/header-block.schema.json
 title: JSON defaults
 headers:
   accept: application/json

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -22,7 +22,9 @@ const externalDependencies = collectExternalDependencies(
 );
 const workspaceAliases = Object.fromEntries(
   [...workspacePackages.entries()]
-    .filter(([workspacePackageName]) => workspacePackageName !== packageJson.name)
+    .filter(
+      ([workspacePackageName]) => workspacePackageName !== packageJson.name,
+    )
     .map(([workspacePackageName, workspacePackage]) => [
       workspacePackageName,
       join(workspacePackage.directory, "dist/index.js"),

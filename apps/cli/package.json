@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "bin": {
-    "httpi": "./dist/index.js"
+    "httpi": "dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
@@ -17,11 +17,15 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "default": "./testing.js"
     }
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "testing.js"
   ],
   "repository": {
     "type": "git",

@@ -3,7 +3,11 @@ import type {
   HttpExecutionResult,
   ResolvedRequestModel,
 } from "@exit-zero-labs/httpi-contracts";
-import { HttpiError, coerceErrorMessage, exitCodes } from "@exit-zero-labs/httpi-shared";
+import {
+  coerceErrorMessage,
+  exitCodes,
+  HttpiError,
+} from "@exit-zero-labs/httpi-shared";
 
 export async function executeHttpRequest(
   request: ResolvedRequestModel,
@@ -61,7 +65,9 @@ export async function executeHttpRequest(
       statusText: response.statusText,
       headers: Object.fromEntries(response.headers.entries()),
       bodyText: isTextResponse ? truncatedBuffer.toString("utf8") : undefined,
-      bodyBase64: isTextResponse ? undefined : truncatedBuffer.toString("base64"),
+      bodyBase64: isTextResponse
+        ? undefined
+        : truncatedBuffer.toString("base64"),
       bodyBytes: responseBuffer.byteLength,
       contentType,
       truncated: responseBuffer.byteLength > truncatedBuffer.byteLength,

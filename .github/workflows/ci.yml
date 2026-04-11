@@ -1,4 +1,4 @@
-name: CI
+name: Node compatibility
 
 on:
   push:
@@ -11,10 +11,26 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   ci:
-    name: Lint, Typecheck, Build
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Full validation on Node 20
+            node-version: 20
+            command: pnpm check && pnpm test && pnpm publish:packages -- --dry-run
+          - name: Full validation on Node 22
+            node-version: 22
+            command: pnpm check && pnpm test && pnpm publish:packages -- --dry-run
+          - name: Full validation on Node 24
+            node-version: 24
+            command: pnpm check && pnpm test && pnpm publish:packages -- --dry-run
 
     steps:
       - name: Checkout
@@ -26,17 +42,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version-file: ".node-version"
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Build
-        run: pnpm build
+      - name: Run compatibility validation
+        run: ${{ matrix.command }}

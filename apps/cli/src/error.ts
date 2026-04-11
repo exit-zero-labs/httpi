@@ -23,10 +23,7 @@ export function toCliFailure(error: unknown): CliFailure {
   };
 }
 
-function renderCliFailureMessage(
-  message: string,
-  details: unknown,
-): string {
+function renderCliFailureMessage(message: string, details: unknown): string {
   if (details === undefined) {
     return message;
   }

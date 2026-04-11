@@ -1,7 +1,7 @@
 {
   "name": "httpi",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open-source file-based HTTP workflows for humans and AI agents.",
   "license": "MIT",
   "author": "Exit Zero Labs LLC",
@@ -37,13 +37,14 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "publish:packages": "node ./scripts/publish-packages.mjs",
-    "release": "pnpm check && pnpm test && pnpm publish:packages",
-    "test": "pnpm build && node --test testing/httpi/httpi.e2e.test.mjs testing/httpi/httpi.unit.test.mjs",
+    "release": "pnpm version-packages && pnpm check && pnpm test && pnpm publish:packages",
+    "test": "pnpm build && node --test testing/httpi/httpi.e2e.test.mjs testing/httpi/httpi.unit.test.mjs testing/httpi/httpi.publish.test.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",
     "@changesets/cli": "^2.30.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^24.12.2",
     "esbuild": "^0.25.12",
     "turbo": "^2.9.6",

@@ -14,6 +14,7 @@
 
 - `docs/product.md` - user-facing product overview
 - `docs/architecture.md` - current technical architecture
+- `docs/agent-guide.md` - concrete CLI/MCP execution loop, pause/resume pattern, and agent-specific safety notes
 - `docs/archive-architecture.md` - archived first-pass architecture draft
 - `docs/idea.md` - original motivation and scope notes
 - `README.md` - public entrypoint for the repository

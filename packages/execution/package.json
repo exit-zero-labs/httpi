@@ -15,11 +15,16 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./src/internal/testing.ts",
+      "default": "./testing.js"
     }
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "testing.js"
   ],
   "repository": {
     "type": "git",

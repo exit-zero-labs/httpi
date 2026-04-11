@@ -40,6 +40,7 @@ If you mainly want a GUI-first API client with cloud sync and visual collections
 
 - [`docs/product.md`](docs/product.md) - high-level product overview
 - [`docs/architecture.md`](docs/architecture.md) - current technical architecture
+- [`docs/agent-guide.md`](docs/agent-guide.md) - agent-oriented CLI/MCP usage patterns and pause/resume guidance
 - [`docs/roadmap.md`](docs/roadmap.md) - current near-term priorities and guardrails
 - [`CHANGELOG.md`](CHANGELOG.md) - user-visible release notes for the current 0.1.x line
 - [`docs/archive-architecture.md`](docs/archive-architecture.md) - preserved first draft
@@ -104,6 +105,22 @@ node apps/cli/dist/index.js run --run smoke
 ```
 
 `init` writes a starter project with a `dev` environment, a `ping` request, and a `smoke` run so the initial validate/describe/explain/run flow works immediately.
+
+### Next steps after `init`
+
+The starter scaffold is intentionally minimal. After the first `validate`/`describe` pass, the usual next steps are:
+
+1. edit `httpi/env/dev.env.yaml` so `baseUrl` points at the service or mock server you actually want to exercise
+2. rerun `describe` or `explain variables` before execution when you change env values or inputs
+3. create `.httpi/secrets.yaml` for any local-only credentials your own requests need
+4. inspect `testing/httpi/fixtures/basic-project` when you want a fuller example with auth, extraction, parallel reads, pause, and resume
+
+Example local secrets file:
+
+```yaml
+devPassword: swordfish
+apiToken: sk_test_123
+```
 
 ### Confirm the scaffold worked
 
@@ -219,7 +236,43 @@ To start the MCP adapter over stdio after building:
 node apps/mcp/dist/index.js
 ```
 
-The core tool surface mirrors the CLI flow: `list_definitions`, `validate_project`, `describe_request`, `describe_run`, `run_definition`, `resume_session`, `get_session_state`, `list_artifacts`, `read_artifact`, and `explain_variables`.
+If you install the published package globally, the same adapter is available as:
+
+```bash
+httpi-mcp --help
+httpi-mcp
+```
+
+The core tool surface mirrors the CLI flow:
+
+| CLI command | MCP tool | Purpose |
+| --- | --- | --- |
+| `list` | `list_definitions` | discover requests, runs, envs, and persisted sessions |
+| `validate` | `validate_project` | return structured diagnostics before execution |
+| `describe --request <id>` | `describe_request` | resolve one request without sending it |
+| `describe --run <id>` | `describe_run` | compile one run and inspect its step graph |
+| `run --request <id>` / `run --run <id>` | `run_definition` | execute exactly one request or one run |
+| `resume <sessionId>` | `resume_session` | continue a paused or failed session after drift checks |
+| `session show <sessionId>` | `get_session_state` | inspect persisted state, drift info, and next step |
+| `artifacts list <sessionId>` | `list_artifacts` | enumerate captured request/response artifacts |
+| `artifacts read <sessionId> <relativePath>` | `read_artifact` | read one artifact with the same redaction policy as the CLI |
+| `explain variables ...` | `explain_variables` | inspect effective values and provenance |
+
+Two MCP-specific notes matter for agent clients:
+
+1. `run_definition` accepts **either** `requestId` **or** `runId`, not both.
+2. `explain_variables` accepts `requestId` or `runId`; when you use `runId`, `stepId` can narrow the explanation to one run step.
+
+Recommended agent loop:
+
+1. `list_definitions` to discover the available requests, runs, envs, and sessions
+2. `validate_project` before any execution attempt
+3. `describe_run` or `describe_request` to inspect what will happen
+4. `run_definition` to execute, then `get_session_state` if the run pauses or fails
+5. `list_artifacts` and `read_artifact` to inspect evidence before any mutating step continues
+6. `resume_session` only after the artifacts and session state look safe to continue
+
+For a worked agent-oriented example, see [`docs/agent-guide.md`](docs/agent-guide.md).
 
 ## Local secrets
 
@@ -231,6 +284,8 @@ apiToken: sk_test_123
 ```
 
 Tracked request and run files can reference these values with `{{secrets.alias}}`. The same interpolation model also works in body templates under `httpi/bodies/`.
+
+For CI or ephemeral environments, write `.httpi/secrets.yaml` at runtime or provide the needed values through the supported `$ENV:NAME` secret references. Keep the tracked `httpi/` files free of secret literals either way.
 
 ## What works today
 
@@ -271,7 +326,8 @@ Common first-run fixes:
 | --- | --- | --- |
 | `No httpi/config.yaml found... Run httpi init first.` | You are outside a scaffolded project root. | Run `httpi init`, then rerun the command from that directory or pass `--project-root`. |
 | `validate` reports YAML parse errors | Hand-edited YAML has indentation, quoting, or shape issues. | Fix the reported file and line, then rerun `validate` before `run`. |
-| `baseUrl` is empty or requests fail to connect | The target service is not running or the env value points at the wrong host/port. | Check `httpi/envs/*.env.yaml`, start the service or mock server, then rerun `describe` or `run`. |
+| `baseUrl` is empty or requests fail to connect | The target service is not running or the env value points at the wrong host/port. | Check `httpi/env/*.env.yaml`, start the service or mock server, then rerun `describe` or `run`. |
+| `resume` says the session is locked | Another `httpi` process is still writing that session, or a prior run crashed before lock cleanup. | Wait for the other process to exit. If you confirm the prior process is gone, remove `.httpi/sessions/<sessionId>.lock` and retry. |
 | Secrets lookup fails | `.httpi/secrets.yaml` is missing or does not define the referenced key. | Create or update `.httpi/secrets.yaml` with the expected secret name, then rerun `validate`. |
 | The mock server fails to start | Another process is already using the configured port. | Stop the conflicting process or change the port in your env file and restart the server. |
 | A run does nothing | The run file has no steps or points at the wrong request IDs. | Open `httpi/runs/*.run.yaml`, add steps, and confirm the referenced definitions with `describe run`. |
