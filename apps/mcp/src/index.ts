@@ -15,8 +15,8 @@ import {
   runRequest,
   runRun,
   validateProject,
-} from "@e0l/httpi-execution";
-import { coerceErrorMessage, exitCodes, HttpiError } from "@e0l/httpi-shared";
+} from "@exit-zero-labs/httpi-execution";
+import { coerceErrorMessage, exitCodes, HttpiError } from "@exit-zero-labs/httpi-shared";
 
 const flatValueSchema = z.union([
   z.string(),

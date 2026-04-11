@@ -25,14 +25,14 @@ import type {
   SessionStepRecord,
   StepArtifactSummary,
   VariableExplanation,
-} from "@e0l/httpi-contracts";
+} from "@exit-zero-labs/httpi-contracts";
 import {
   compileRequestSnapshot,
   compileRunSnapshot,
   findProjectRoot,
   loadProjectFiles,
-} from "@e0l/httpi-definitions";
-import { executeHttpRequest } from "@e0l/httpi-http";
+} from "@exit-zero-labs/httpi-definitions";
+import { executeHttpRequest } from "@exit-zero-labs/httpi-http";
 import {
   acquireSessionLock,
   appendSessionEvent,
@@ -48,7 +48,7 @@ import {
   releaseSessionLock,
   writeSession,
   writeStepArtifacts,
-} from "@e0l/httpi-runtime";
+} from "@exit-zero-labs/httpi-runtime";
 import {
   HttpiError,
   assertPathWithin,
@@ -69,7 +69,7 @@ import {
   toIsoTimestamp,
   trackedDirectoryName,
   writeUtf8File,
-} from "@e0l/httpi-shared";
+} from "@exit-zero-labs/httpi-shared";
 
 export interface EngineOptions {
   cwd?: string | undefined;

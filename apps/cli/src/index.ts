@@ -13,13 +13,13 @@ import {
   runRequest,
   runRun,
   validateProject,
-} from "@e0l/httpi-execution";
+} from "@exit-zero-labs/httpi-execution";
 import {
   coerceFlatValue,
   HttpiError,
   exitCodes,
-} from "@e0l/httpi-shared";
-import type { FlatVariableMap } from "@e0l/httpi-contracts";
+} from "@exit-zero-labs/httpi-shared";
+import type { FlatVariableMap } from "@exit-zero-labs/httpi-contracts";
 import { toCliFailure } from "./error.js";
 
 export async function runCli(argv = process.argv.slice(2)): Promise<number> {

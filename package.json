@@ -34,11 +34,16 @@
     "lint": "pnpm exec biome lint .",
     "format": "pnpm exec biome format --write .",
     "format:check": "pnpm exec biome check .",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "publish:packages": "changeset publish",
+    "release": "pnpm check && pnpm test && pnpm publish:packages",
     "test": "pnpm build && node --test testing/httpi/httpi.e2e.test.mjs testing/httpi/httpi.unit.test.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",
+    "@changesets/cli": "^2.30.0",
     "@types/node": "^24.12.2",
     "turbo": "^2.9.6",
     "typescript": "^5.9.3"

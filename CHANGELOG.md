@@ -2,6 +2,11 @@
 
 This changelog tracks user-visible changes for the current `0.1.x` line.
 
+## Unreleased
+
+- prepare scoped npm publishing for the `@exit-zero-labs/*` packages with Changesets-based release automation
+- publish the installable CLI as `@exit-zero-labs/httpi` and the MCP adapter as `@exit-zero-labs/httpi-mcp`
+
 ## 0.1.0
 
 - initial file-based `httpi/` plus `.httpi/` workflow model

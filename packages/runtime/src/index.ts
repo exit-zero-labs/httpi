@@ -8,7 +8,7 @@ import {
   realpath,
 } from "node:fs/promises";
 import { parseDocument } from "yaml";
-import { schemaVersion } from "@e0l/httpi-contracts";
+import { schemaVersion } from "@exit-zero-labs/httpi-contracts";
 import type {
   ArtifactManifest,
   ArtifactManifestEntry,
@@ -18,7 +18,7 @@ import type {
   SessionStepRecord,
   StepArtifactSummary,
   StepState,
-} from "@e0l/httpi-contracts";
+} from "@exit-zero-labs/httpi-contracts";
 import {
   HttpiError,
   appendJsonLine,
@@ -40,7 +40,7 @@ import {
   toIsoTimestamp,
   writeFileAtomic,
   writeJsonFileAtomic,
-} from "@e0l/httpi-shared";
+} from "@exit-zero-labs/httpi-shared";
 
 export interface RuntimePaths {
   rootDir: string;

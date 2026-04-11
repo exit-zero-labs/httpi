@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { LineCounter, parseDocument } from "yaml";
-import { schemaVersion } from "@e0l/httpi-contracts";
+import { schemaVersion } from "@exit-zero-labs/httpi-contracts";
 import type {
   AuthBlockDefinition,
   AuthDefinition,
@@ -34,7 +34,7 @@ import type {
   RunPauseStepDefinition,
   RunRequestStepDefinition,
   RunStepDefinition,
-} from "@e0l/httpi-contracts";
+} from "@exit-zero-labs/httpi-contracts";
 import {
   HttpiError,
   asRecord,
@@ -53,7 +53,7 @@ import {
   trackedDirectoryName,
   walkFiles,
   yamlFileSuffix,
-} from "@e0l/httpi-shared";
+} from "@exit-zero-labs/httpi-shared";
 
 const defaultCapturePolicy: CapturePolicy = {
   requestSummary: true,

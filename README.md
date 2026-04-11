@@ -67,6 +67,28 @@ pnpm build
 pnpm check
 ```
 
+## Install from npm
+
+The published npm packages use the `@exit-zero-labs/*` scope:
+
+- `@exit-zero-labs/httpi` - CLI package with the `httpi` binary
+- `@exit-zero-labs/httpi-mcp` - MCP stdio adapter with the `httpi-mcp` binary
+- `@exit-zero-labs/httpi-contracts`, `@exit-zero-labs/httpi-definitions`, `@exit-zero-labs/httpi-execution`, `@exit-zero-labs/httpi-http`, `@exit-zero-labs/httpi-runtime`, and `@exit-zero-labs/httpi-shared` - shared engine packages
+
+Install the CLI globally with:
+
+```bash
+npm install -g @exit-zero-labs/httpi
+httpi init
+```
+
+Install the MCP adapter globally with:
+
+```bash
+npm install -g @exit-zero-labs/httpi-mcp
+httpi-mcp
+```
+
 ## Quick start
 
 ```bash

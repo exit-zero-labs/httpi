@@ -1,9 +1,13 @@
 {
-  "name": "@e0l/cli",
-  "private": true,
+  "name": "@exit-zero-labs/httpi",
   "version": "0.1.0",
   "description": "CLI entrypoint for httpi.",
   "type": "module",
+  "license": "MIT",
+  "author": "Exit Zero Labs LLC",
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "httpi": "./dist/index.js"
   },
@@ -16,15 +20,28 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/exit-zero-labs/httpi.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/exit-zero-labs/httpi/issues"
+  },
+  "homepage": "https://github.com/exit-zero-labs/httpi#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@e0l/httpi-contracts": "workspace:*",
-    "@e0l/httpi-execution": "workspace:*",
-    "@e0l/httpi-shared": "workspace:*"
+    "@exit-zero-labs/httpi-contracts": "workspace:*",
+    "@exit-zero-labs/httpi-execution": "workspace:*",
+    "@exit-zero-labs/httpi-shared": "workspace:*"
   }
 }

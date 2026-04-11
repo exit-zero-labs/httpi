@@ -59,6 +59,19 @@ Changes that touch the public surface should update the relevant canonical docum
 - `packages/contracts/schemas/` and `.vscode/settings.json` when tracked YAML authoring rules change
 - `testing/httpi/README.md` and `testing/httpi/judge/basic-flow.md` when acceptance behavior changes
 
+## Release flow
+
+Published packages use the `@exit-zero-labs/*` scope.
+
+For changes that should ship to npm:
+
+1. run `pnpm changeset` and describe the user-visible package change
+2. merge the PR to `main`
+3. let `.github/workflows/release.yml` open or update the Changesets release PR
+4. merge that release PR to publish the new package versions once `NPM_TOKEN` is configured
+
+Repository maintainers need an `NPM_TOKEN` GitHub Actions secret with publish access to the `@exit-zero-labs` npm organization before the release workflow can publish packages. Without it, the workflow still opens or updates the release PR and a later `workflow_dispatch` run can publish once the secret is in place.
+
 ## Commits
 
 Use Conventional Commits where practical:

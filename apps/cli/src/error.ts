@@ -2,7 +2,7 @@ import {
   coerceErrorMessage,
   exitCodes,
   isHttpiError,
-} from "@e0l/httpi-shared";
+} from "@exit-zero-labs/httpi-shared";
 
 export interface CliFailure {
   message: string;

@@ -2,8 +2,8 @@ import type {
   CapturePolicy,
   HttpExecutionResult,
   ResolvedRequestModel,
-} from "@e0l/httpi-contracts";
-import { HttpiError, coerceErrorMessage, exitCodes } from "@e0l/httpi-shared";
+} from "@exit-zero-labs/httpi-contracts";
+import { HttpiError, coerceErrorMessage, exitCodes } from "@exit-zero-labs/httpi-shared";
 
 export async function executeHttpRequest(
   request: ResolvedRequestModel,

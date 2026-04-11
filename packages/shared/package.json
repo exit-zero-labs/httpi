@@ -1,9 +1,13 @@
 {
-  "name": "@e0l/httpi-shared",
-  "private": true,
+  "name": "@exit-zero-labs/httpi-shared",
   "version": "0.1.0",
   "description": "Shared leaf utilities for httpi.",
   "type": "module",
+  "license": "MIT",
+  "author": "Exit Zero Labs LLC",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
@@ -13,8 +17,21 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/exit-zero-labs/httpi.git",
+    "directory": "packages/shared"
+  },
+  "bugs": {
+    "url": "https://github.com/exit-zero-labs/httpi/issues"
+  },
+  "homepage": "https://github.com/exit-zero-labs/httpi#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
