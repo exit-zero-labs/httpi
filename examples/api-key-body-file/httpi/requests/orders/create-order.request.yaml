@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Create order
+method: POST
+url: "{{baseUrl}}/orders"
+uses:
+  headers:
+    - common/json
+auth:
+  scheme: header
+  header: x-api-key
+  value: $ENV:API_TOKEN
+body:
+  file: orders/create-order.json
+  contentType: application/json
+expect:
+  status: 201
+extract:
+  orderId:
+    from: $.id
+    required: true

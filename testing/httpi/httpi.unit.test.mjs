@@ -31,10 +31,7 @@ import {
 } from "../../packages/shared/dist/index.js";
 
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const fixtureProjectRoot = resolve(
-  repoRoot,
-  "testing/httpi/fixtures/basic-project",
-);
+const fixtureProjectRoot = resolve(repoRoot, "examples/pause-resume");
 
 test("explicit and path-derived secret extracts stay tainted", () => {
   const outputs = extractStepOutputs(

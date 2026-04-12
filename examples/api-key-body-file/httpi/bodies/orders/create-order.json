@@ -1,0 +1,5 @@
+{
+  "sku": "{{sku}}",
+  "quantity": "{{quantity}}",
+  "note": "{{note}}"
+}

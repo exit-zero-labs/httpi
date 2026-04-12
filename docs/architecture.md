@@ -117,9 +117,11 @@ repo/
 │   ├── responses/
 │   ├── sessions/
 │   └── secrets.yaml
+├── examples/
+│   └── */
+│       └── httpi/
 └── testing/
     └── httpi/
-        ├── fixtures/
         ├── flows/
         └── judge/
 ```
@@ -135,7 +137,7 @@ repo/
 | `httpi/bodies/**`                  | Reusable request payload files                     |
 | `httpi/requests/**/*.request.yaml` | Atomic request definitions                         |
 | `httpi/runs/**/*.run.yaml`         | Multi-step execution plans                         |
-| `.httpi/secrets.yaml`              | Local secret aliases, Git-ignored                  |
+| `.httpi/secrets.yaml`              | Local secret aliases, normally Git-ignored         |
 | `.httpi/sessions/*.json`           | Persisted session snapshots                        |
 | `.httpi/responses/<sessionId>/...` | Captured runtime artifacts                         |
 
@@ -591,7 +593,7 @@ The same engine must back both interfaces.
 
 ### 12.1 Security
 
-- `.httpi/` must be Git-ignored
+- `.httpi/` must be Git-ignored in normal projects; checked-in examples may include placeholder runtime skeletons
 - `httpi init` must add `.httpi/` to `.gitignore`
 - tracked files must not contain secret literals in known secret-bearing fields
 - runtime-owned session and artifact files should be owner-readable only when supported
@@ -620,10 +622,11 @@ The same engine must back both interfaces.
 Recommended structure:
 
 ```text
+examples/       public example projects exercised by automated tests
 testing/httpi/
-├── fixtures/   # payloads, env files, sample definitions, golden artifacts
-├── flows/      # canonical end-to-end request/run flows
-└── judge/      # pass/fail checklists for agent-driven validation
+├── flows/      # canonical end-to-end request/run flow notes
+├── judge/      # pass/fail checklists for agent-driven validation
+└── *.test.mjs  # unit, example, E2E, and publish coverage
 ```
 
 Test layers:

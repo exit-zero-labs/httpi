@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/config.schema.json
+schemaVersion: 1
+project: api-key-body-file
+defaultEnv: dev
+
+defaults:
+  timeoutMs: 5000
+
+capture:
+  requestSummary: true
+  responseMetadata: true
+  responseBody: full
+  redactHeaders:
+    - authorization
+    - cookie
+    - set-cookie
+    - x-api-key

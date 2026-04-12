@@ -85,7 +85,7 @@ When `httpi` executes a run, it persists a session record and artifacts under `.
 - `artifacts list` / `list_artifacts` shows which files were captured
 - `artifacts read` / `read_artifact` lets you inspect one artifact with redaction applied
 
-For the canonical pause flow, use the fixture project under [`testing/httpi/fixtures/basic-project`](../testing/httpi/fixtures/basic-project):
+For the canonical pause flow, use [`examples/pause-resume`](../examples/pause-resume):
 
 1. login
 2. extract a token
@@ -160,7 +160,7 @@ That split is important for agents:
 
 - tracked request and run definitions are reviewable and diffable
 - session and artifact files are evidence, not authoring input
-- `.httpi/secrets.yaml` must stay out of Git
+- in normal projects, `.httpi/secrets.yaml` must stay out of Git
 
 ## 9. Best next document
 
@@ -168,4 +168,4 @@ After this guide, the most useful references are:
 
 - [`README.md`](../README.md) for the public quick start and troubleshooting flow
 - [`architecture.md`](architecture.md) for execution semantics and package boundaries
-- [`testing/httpi/README.md`](../testing/httpi/README.md) for fixture and judge assets
+- [`testing/httpi/README.md`](../testing/httpi/README.md) for automated coverage and judge assets

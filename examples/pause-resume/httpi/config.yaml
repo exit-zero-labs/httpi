@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/config.schema.json
 schemaVersion: 1
-project: basic-project
+project: pause-resume
 defaultEnv: dev
 
 defaults:

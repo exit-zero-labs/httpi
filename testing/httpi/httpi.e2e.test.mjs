@@ -21,10 +21,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const cliEntrypoint = resolve(repoRoot, "apps/cli/dist/index.js");
 const mcpEntrypoint = resolve(repoRoot, "apps/mcp/dist/index.js");
-const fixtureProjectRoot = resolve(
-  repoRoot,
-  "testing/httpi/fixtures/basic-project",
-);
+const fixtureProjectRoot = resolve(repoRoot, "examples/pause-resume");
 
 test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, and redacts artifacts", async () => {
   const { server, baseUrl, state } = await startMockServer();
@@ -473,7 +470,7 @@ test("CLI and MCP pin documented validation and runtime error contracts", async 
   }
 });
 
-test("fixture project tracked YAML files keep schema hints", async () => {
+test("canonical pause-resume example tracked YAML files keep schema hints", async () => {
   for (const relativePath of [
     "httpi/config.yaml",
     "httpi/env/dev.env.yaml",

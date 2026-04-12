@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/run.schema.json
+kind: run
+title: Submit order
+env: dev
+inputs:
+  sku: sku_basic
+  quantity: 2
+  note: Handle with care
+steps:
+  - kind: request
+    id: create-order
+    uses: orders/create-order
+
+  - kind: request
+    id: get-order
+    uses: orders/get-order
+    with:
+      orderId: "{{steps.create-order.orderId}}"

@@ -7,10 +7,11 @@ Thanks for contributing to `httpi`.
 ## Before you start
 
 - read [`README.md`](README.md)
+- read [`docs/get-started.md`](docs/get-started.md)
 - read [`docs/product.md`](docs/product.md)
 - read [`docs/architecture.md`](docs/architecture.md)
 - scan [`docs/roadmap.md`](docs/roadmap.md) for the current priorities so you do not duplicate planned work
-- read [`testing/httpi/README.md`](testing/httpi/README.md) before changing fixtures, judge assets, or end-to-end behavior
+- read [`testing/httpi/README.md`](testing/httpi/README.md) before changing examples, judge assets, or end-to-end behavior
 - check open issues before large changes so your proposal lines up with the roadmap and active discussions
 
 ## Local setup
@@ -28,7 +29,7 @@ For most non-trivial changes, the expected local loop is:
 1. make the code or docs change
 2. run `pnpm check`
 3. run `pnpm test`
-4. exercise the fixture project under `testing/httpi/fixtures/basic-project` when the change affects CLI, MCP, runtime semantics, or documentation examples
+4. exercise the canonical example project under `examples/pause-resume` when the change affects CLI, MCP, runtime semantics, or documentation examples
 
 ## Working conventions
 
@@ -53,6 +54,7 @@ For non-trivial changes:
 Changes that touch the public surface should update the relevant canonical documents in the same PR:
 
 - `README.md` for repository entrypoint and quick-start behavior
+- `docs/get-started.md` for contributor setup and repository layout
 - `CHANGELOG.md` for user-visible changes in the current release line
 - `docs/product.md` for user-facing product promises
 - `docs/architecture.md` for technical contracts and semantics
@@ -89,7 +91,7 @@ docs: refine architecture overview
 Good early contributions include:
 
 - documentation improvements
-- fixture and judge assets under `testing/httpi/`
+- example and judge assets under `examples/` and `testing/httpi/`
 - schema and validation work
 - runtime safety and redaction improvements
 - CLI and MCP parity improvements

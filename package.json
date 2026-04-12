@@ -38,7 +38,7 @@
     "version-packages": "changeset version",
     "publish:packages": "node ./scripts/publish-packages.mjs",
     "release": "pnpm version-packages && pnpm check && pnpm test && pnpm publish:packages",
-    "test": "pnpm build && node --test testing/httpi/httpi.e2e.test.mjs testing/httpi/httpi.unit.test.mjs testing/httpi/httpi.publish.test.mjs",
+    "test": "pnpm build && node --test testing/httpi/httpi.e2e.test.mjs testing/httpi/httpi.examples.test.mjs testing/httpi/httpi.unit.test.mjs testing/httpi/httpi.publish.test.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "devDependencies": {
