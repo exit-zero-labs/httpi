@@ -75,7 +75,7 @@ export function nextAttemptNumber(
 export function startAttempt(
   session: SessionRecord,
   stepId: string,
-  kind: "request" | "parallel" | "pause",
+  kind: "request" | "parallel" | "pause" | "pollUntil",
   attempt: number,
 ): SessionRecord {
   const stepRecord = getSessionStepRecord(session, stepId);

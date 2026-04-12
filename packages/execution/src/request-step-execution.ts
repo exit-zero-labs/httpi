@@ -1,9 +1,16 @@
 import type {
+  AssertionResult,
   CompiledRequestStep,
+  EnrichedDiagnostic,
   HttpExecutionResult,
   SessionRecord,
   StepArtifactSummary,
 } from "@exit-zero-labs/httpi-contracts";
+import { isDiagnostic } from "@exit-zero-labs/httpi-contracts";
+import {
+  enrichDiagnosticsFromFiles,
+  finalizeDiagnostic,
+} from "@exit-zero-labs/httpi-definitions";
 import { executeHttpRequest } from "@exit-zero-labs/httpi-http";
 import {
   appendSessionEvent,
@@ -12,13 +19,14 @@ import {
 } from "@exit-zero-labs/httpi-runtime";
 import {
   coerceErrorMessage,
+  exitCodes,
+  HttpiError,
+  isHttpiError,
   toIsoTimestamp,
 } from "@exit-zero-labs/httpi-shared";
+import { evaluateAssertions } from "./assertions.js";
 import { getSessionStepRecord } from "./project-context.js";
-import {
-  assertStatusExpectation,
-  maybeWriteRequestArtifacts,
-} from "./request-artifacts.js";
+import { maybeWriteRequestArtifacts } from "./request-artifacts.js";
 import { extractStepOutputs } from "./request-outputs.js";
 import { materializeRequest } from "./request-resolution.js";
 import {
@@ -83,7 +91,7 @@ export async function executeRequestStep(
       materialized.request,
       nextSession.compiled.capture,
     );
-    assertStatusExpectation(step, exchange);
+    assertExpectations(step, exchange);
     extractedOutputs = extractStepOutputs(step, exchange);
     const extractedSecretValues = collectSecretOutputValues(extractedOutputs);
 
@@ -139,9 +147,14 @@ export async function executeRequestStep(
     return {
       session: nextSession,
       success: true,
+      diagnostics: [],
     };
   } catch (error) {
     const message = coerceErrorMessage(error);
+    const diagnostics = redactExecutionDiagnostics(
+      await resolveExecutionDiagnostics(error),
+      secretValues,
+    );
 
     if (materialized && exchange) {
       artifactSummary = await maybeWriteRequestArtifacts(
@@ -191,6 +204,77 @@ export async function executeRequestStep(
     return {
       session: nextSession,
       success: false,
+      diagnostics,
     };
   }
+}
+
+async function resolveExecutionDiagnostics(
+  error: unknown,
+): Promise<EnrichedDiagnostic[]> {
+  if (!isHttpiError(error) || !Array.isArray(error.details)) {
+    return [];
+  }
+
+  const diagnostics = error.details.filter(isDiagnostic);
+  if (diagnostics.length === 0) {
+    return [];
+  }
+
+  try {
+    return await enrichDiagnosticsFromFiles(diagnostics);
+  } catch {
+    return diagnostics.map((diagnostic) => finalizeDiagnostic(diagnostic));
+  }
+}
+
+function redactExecutionDiagnostics(
+  diagnostics: EnrichedDiagnostic[],
+  secretValues: string[],
+): EnrichedDiagnostic[] {
+  return diagnostics.map((diagnostic) => ({
+    ...diagnostic,
+    message: redactArtifactText(diagnostic.message, secretValues),
+    hint: redactArtifactText(diagnostic.hint, secretValues),
+  }));
+}
+
+function assertExpectations(
+  step: CompiledRequestStep,
+  exchange: HttpExecutionResult,
+): void {
+  const expect = step.request.expect;
+  if (
+    !expect.status &&
+    !expect.latencyMs &&
+    !expect.headers &&
+    !expect.body &&
+    !expect.stream
+  ) {
+    return;
+  }
+
+  const results: AssertionResult[] = evaluateAssertions(expect, exchange);
+  const failures = results.filter((r) => !r.passed);
+  if (failures.length === 0) {
+    return;
+  }
+
+  const first = failures[0]!;
+  const message =
+    failures.length === 1
+      ? `Assertion failed: ${first.path} ${first.matcher} expected ${JSON.stringify(first.expected)} but got ${JSON.stringify(first.actual)}.`
+      : `${failures.length} assertions failed. First: ${first.path} ${first.matcher} expected ${JSON.stringify(first.expected)} but got ${JSON.stringify(first.actual)}.`;
+
+  throw new HttpiError("EXPECTATION_FAILED", message, {
+    exitCode: exitCodes.executionFailure,
+    details: failures.map((f) => ({
+      level: "error" as const,
+      code: "EXPECTATION_FAILED",
+      message: `${f.path} ${f.matcher}: expected ${JSON.stringify(f.expected)}, got ${JSON.stringify(f.actual)}`,
+      hint: "Update the expect block if the contract changed, or investigate why the response no longer matches.",
+      filePath: step.request.filePath,
+      path: `expect.${f.path}`,
+    })),
+  });
 }

@@ -30,6 +30,11 @@ import {
 } from "@exit-zero-labs/httpi-shared";
 import { LineCounter, parseDocument } from "yaml";
 import {
+  createYamlDiagnosticResolver,
+  enrichDiagnosticsFromFiles,
+  finalizeDiagnostic,
+} from "./diagnostic-locations.js";
+import {
   defaultCapturePolicy,
   detectSecretLiteralDiagnostics,
 } from "./parsing-helpers.js";
@@ -107,6 +112,7 @@ export async function loadProjectFiles(
     parsedConfig.value ??
     createFallbackProjectConfig(resolve(projectRoot, trackedDirectoryName));
   const configHash = parsedConfig.hash ?? "";
+  const enrichedDiagnostics = await enrichDiagnosticsFromFiles(diagnostics);
 
   const projectFiles: ProjectFiles = {
     rootDir: resolve(projectRoot),
@@ -118,10 +124,12 @@ export async function loadProjectFiles(
     authBlocks: authBlocks.files,
     requests: requests.files,
     runs: runs.files,
-    diagnostics,
+    diagnostics: enrichedDiagnostics,
   };
 
-  projectFiles.diagnostics.push(...validateProjectReferences(projectFiles));
+  projectFiles.diagnostics.push(
+    ...(await enrichDiagnosticsFromFiles(validateProjectReferences(projectFiles))),
+  );
   return projectFiles;
 }
 
@@ -215,6 +223,7 @@ async function parseTypedYamlFile<TValue>(
     `Tracked ${kind} file ${filePath}`,
   );
   const rawContent = await readUtf8File(filePath);
+  const resolver = createYamlDiagnosticResolver(filePath, rawContent);
   const lineCounter = new LineCounter();
   const document = parseDocument(rawContent, {
     lineCounter,
@@ -238,13 +247,19 @@ async function parseTypedYamlFile<TValue>(
       });
     }
 
-    return { diagnostics };
+    return {
+      diagnostics: diagnostics.map((diagnostic) =>
+        finalizeDiagnostic(diagnostic, resolver),
+      ),
+    };
   }
 
-  const result = parser(document.toJS(), filePath);
-  result.diagnostics.push(
-    ...detectSecretLiteralDiagnostics(document.toJS(), filePath, kind),
-  );
+  const documentValue = document.toJS();
+  const result = parser(documentValue, filePath);
+  result.diagnostics = [
+    ...result.diagnostics,
+    ...detectSecretLiteralDiagnostics(documentValue, filePath, kind),
+  ].map((diagnostic) => finalizeDiagnostic(diagnostic, resolver));
 
   return {
     value: result.value,

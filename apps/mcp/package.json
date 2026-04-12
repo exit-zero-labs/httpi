@@ -51,6 +51,7 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@exit-zero-labs/httpi-contracts": "workspace:*",
     "@exit-zero-labs/httpi-execution": "workspace:*",
     "@exit-zero-labs/httpi-shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",

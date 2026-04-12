@@ -4,15 +4,19 @@ import type {
   DescribeRequestResult,
   DescribeRunResult,
   Diagnostic,
+  EnrichedDiagnostic,
   ExecutionResult,
   ExplainVariablesResult,
   FlatVariableMap,
   ListDefinitionsResult,
   SessionStateResult,
 } from "@exit-zero-labs/httpi-contracts";
+import { isDiagnostic } from "@exit-zero-labs/httpi-contracts";
 import {
   compileRequestSnapshot,
   compileRunSnapshot,
+  enrichDiagnosticsFromFiles,
+  finalizeDiagnostic,
   findProjectRoot,
 } from "@exit-zero-labs/httpi-definitions";
 import {
@@ -81,7 +85,7 @@ export async function listProjectDefinitions(
 
 export async function validateProject(options: EngineOptions = {}): Promise<{
   rootDir: string;
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }> {
   const context = await loadProjectContext(options);
   return {
@@ -97,27 +101,29 @@ export async function describeRequest(
     overrides?: FlatVariableMap | undefined;
   } = {},
 ): Promise<DescribeRequestResult> {
-  const context = await loadProjectContext(options);
-  const compiled = compileRequestSnapshot(
-    context.project,
-    requestId,
-    buildCompileOptions(options.envId, options.overrides),
-  );
-  const step = getSingleRequestStep(compiled, requestId);
-  const materialized = await materializeRequest(
-    context.rootDir,
-    compiled,
-    step,
-    {},
-    {},
-  );
-  return {
-    requestId,
-    envId: compiled.envId,
-    request: redactResolvedRequestModel(materialized.request),
-    variables: redactVariableExplanations(materialized.variables),
-    diagnostics: context.project.diagnostics,
-  };
+  return withEnrichedDiagnosticErrors(async () => {
+    const context = await loadProjectContext(options);
+    const compiled = compileRequestSnapshot(
+      context.project,
+      requestId,
+      buildCompileOptions(options.envId, options.overrides),
+    );
+    const step = getSingleRequestStep(compiled, requestId);
+    const materialized = await materializeRequest(
+      context.rootDir,
+      compiled,
+      step,
+      {},
+      {},
+    );
+    return {
+      requestId,
+      envId: compiled.envId,
+      request: redactResolvedRequestModel(materialized.request),
+      variables: redactVariableExplanations(materialized.variables),
+      diagnostics: context.project.diagnostics,
+    };
+  });
 }
 
 export async function describeRun(
@@ -127,20 +133,22 @@ export async function describeRun(
     overrides?: FlatVariableMap | undefined;
   } = {},
 ): Promise<DescribeRunResult> {
-  const context = await loadProjectContext(options);
-  const compiled = compileRunSnapshot(
-    context.project,
-    runId,
-    buildCompileOptions(options.envId, options.overrides),
-  );
+  return withEnrichedDiagnosticErrors(async () => {
+    const context = await loadProjectContext(options);
+    const compiled = compileRunSnapshot(
+      context.project,
+      runId,
+      buildCompileOptions(options.envId, options.overrides),
+    );
 
-  return {
-    runId,
-    envId: compiled.envId,
-    title: compiled.title,
-    steps: compiled.steps.map((step) => describeCompiledStep(step)),
-    diagnostics: context.project.diagnostics,
-  };
+    return {
+      runId,
+      envId: compiled.envId,
+      title: compiled.title,
+      steps: compiled.steps.map((step) => describeCompiledStep(step)),
+      diagnostics: context.project.diagnostics,
+    };
+  });
 }
 
 export async function runRequest(
@@ -150,19 +158,21 @@ export async function runRequest(
     overrides?: FlatVariableMap | undefined;
   } = {},
 ): Promise<ExecutionResult> {
-  const context = await loadProjectContext(options);
-  const compiled = compileRequestSnapshot(
-    context.project,
-    requestId,
-    buildCompileOptions(options.envId, options.overrides),
-  );
+  return withEnrichedDiagnosticErrors(async () => {
+    const context = await loadProjectContext(options);
+    const compiled = compileRequestSnapshot(
+      context.project,
+      requestId,
+      buildCompileOptions(options.envId, options.overrides),
+    );
 
-  const session = createSessionRecord(compiled);
-  const result = await executeSession(context.rootDir, session);
-  return {
-    ...result,
-    session: redactSessionForOutput(result.session),
-  };
+    const session = createSessionRecord(compiled);
+    const result = await executeSession(context.rootDir, session);
+    return {
+      ...result,
+      session: redactSessionForOutput(result.session),
+    };
+  });
 }
 
 export async function runRun(
@@ -172,19 +182,21 @@ export async function runRun(
     overrides?: FlatVariableMap | undefined;
   } = {},
 ): Promise<ExecutionResult> {
-  const context = await loadProjectContext(options);
-  const compiled = compileRunSnapshot(
-    context.project,
-    runId,
-    buildCompileOptions(options.envId, options.overrides),
-  );
+  return withEnrichedDiagnosticErrors(async () => {
+    const context = await loadProjectContext(options);
+    const compiled = compileRunSnapshot(
+      context.project,
+      runId,
+      buildCompileOptions(options.envId, options.overrides),
+    );
 
-  const session = createSessionRecord(compiled);
-  const result = await executeSession(context.rootDir, session);
-  return {
-    ...result,
-    session: redactSessionForOutput(result.session),
-  };
+    const session = createSessionRecord(compiled);
+    const result = await executeSession(context.rootDir, session);
+    return {
+      ...result,
+      session: redactSessionForOutput(result.session),
+    };
+  });
 }
 
 export async function resumeSessionRun(
@@ -202,7 +214,9 @@ export async function resumeSessionRun(
     );
   }
 
-  const driftDiagnostics = await detectDefinitionDrift(rootDir, session);
+  const driftDiagnostics = await enrichDiagnosticsFromFiles(
+    await detectDefinitionDrift(rootDir, session),
+  );
   if (driftDiagnostics.some((diagnostic) => diagnostic.level === "error")) {
     throw new HttpiError(
       "SESSION_DRIFT_DETECTED",
@@ -227,7 +241,9 @@ export async function getSessionState(
 ): Promise<SessionStateResult> {
   const rootDir = await findProjectRoot(options);
   const session = await readSession(rootDir, sessionId);
-  const diagnostics = await detectDefinitionDrift(rootDir, session);
+  const diagnostics = await enrichDiagnosticsFromFiles(
+    await detectDefinitionDrift(rootDir, session),
+  );
   return {
     session: redactSessionForOutput(session),
     diagnostics,
@@ -271,65 +287,103 @@ export async function explainVariables(
     overrides?: FlatVariableMap | undefined;
   },
 ): Promise<ExplainVariablesResult> {
-  const context = await loadProjectContext(options);
+  return withEnrichedDiagnosticErrors(async () => {
+    const context = await loadProjectContext(options);
 
-  if (options.requestId && options.runId) {
-    throw new HttpiError(
-      "EXPLAIN_TARGET_AMBIGUOUS",
-      "Explain variables accepts either requestId or runId, not both.",
-      { exitCode: exitCodes.validationFailure },
-    );
-  }
+    if (options.requestId && options.runId) {
+      throw new HttpiError(
+        "EXPLAIN_TARGET_AMBIGUOUS",
+        "Explain variables accepts either requestId or runId, not both.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
 
-  if (options.requestId) {
-    const compiled = compileRequestSnapshot(
+    if (options.requestId) {
+      const compiled = compileRequestSnapshot(
+        context.project,
+        options.requestId,
+        buildCompileOptions(options.envId, options.overrides),
+      );
+      const step = getSingleRequestStep(compiled, options.requestId);
+
+      const materialized = await materializeRequest(
+        context.rootDir,
+        compiled,
+        step,
+        {},
+        {},
+      );
+      return {
+        targetId: options.requestId,
+        envId: compiled.envId,
+        variables: redactVariableExplanations(materialized.variables),
+        diagnostics: context.project.diagnostics,
+      };
+    }
+
+    if (!options.runId) {
+      throw new HttpiError(
+        "EXPLAIN_TARGET_REQUIRED",
+        "Explain variables requires either requestId or runId.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+
+    const compiled = compileRunSnapshot(
       context.project,
-      options.requestId,
+      options.runId,
       buildCompileOptions(options.envId, options.overrides),
     );
-    const step = getSingleRequestStep(compiled, options.requestId);
-
+    const requestStep = selectExplainStep(compiled, options.stepId);
     const materialized = await materializeRequest(
       context.rootDir,
       compiled,
-      step,
+      requestStep,
       {},
       {},
     );
+
     return {
-      targetId: options.requestId,
+      targetId: `${options.runId}#${requestStep.id}`,
       envId: compiled.envId,
       variables: redactVariableExplanations(materialized.variables),
       diagnostics: context.project.diagnostics,
     };
+  });
+}
+
+async function withEnrichedDiagnosticErrors<TResult>(
+  action: () => Promise<TResult>,
+): Promise<TResult> {
+  try {
+    return await action();
+  } catch (error) {
+    throw await enrichHttpiErrorDiagnostics(error);
+  }
+}
+
+async function enrichHttpiErrorDiagnostics(error: unknown): Promise<unknown> {
+  if (!(error instanceof HttpiError) || !Array.isArray(error.details)) {
+    return error;
   }
 
-  if (!options.runId) {
-    throw new HttpiError(
-      "EXPLAIN_TARGET_REQUIRED",
-      "Explain variables requires either requestId or runId.",
-      { exitCode: exitCodes.validationFailure },
+  const diagnostics = error.details.filter(isDiagnostic);
+  if (diagnostics.length !== error.details.length || diagnostics.length === 0) {
+    return error;
+  }
+
+  let enrichedDiagnostics: Diagnostic[];
+  try {
+    enrichedDiagnostics = await enrichDiagnosticsFromFiles(diagnostics);
+  } catch {
+    enrichedDiagnostics = diagnostics.map((diagnostic) =>
+      finalizeDiagnostic(diagnostic),
     );
   }
 
-  const compiled = compileRunSnapshot(
-    context.project,
-    options.runId,
-    buildCompileOptions(options.envId, options.overrides),
-  );
-  const requestStep = selectExplainStep(compiled, options.stepId);
-  const materialized = await materializeRequest(
-    context.rootDir,
-    compiled,
-    requestStep,
-    {},
-    {},
-  );
-
-  return {
-    targetId: `${options.runId}#${requestStep.id}`,
-    envId: compiled.envId,
-    variables: redactVariableExplanations(materialized.variables),
-    diagnostics: context.project.diagnostics,
-  };
+  return new HttpiError(error.code, error.message, {
+    cause: error.cause,
+    exitCode: error.exitCode,
+    details: enrichedDiagnostics,
+  });
 }

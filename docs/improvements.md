@@ -309,11 +309,11 @@ Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a 
 
 **Human review checkpoints:**
 
-- [ ] Read every new TypeScript type added for streaming (`StreamConfig`, `ChunkArtifact`, `StreamAssertions`, etc.) and verify they match the YAML schema in this document exactly — no extra fields, no missing fields.
-- [ ] Confirm `response.mode` is validated at definition-load time: only `buffered`, `stream`, and `binary` are accepted; any other value produces a structured diagnostic with `file:line`.
-- [ ] Walk through the `packages/http` streaming implementation and verify that chunk capture happens inside the same code path regardless of whether the caller is CLI or MCP (no forked logic).
-- [ ] Verify that `cancel` during a `stream` response correctly aborts the underlying `fetch` body reader and does not leave a dangling TCP connection (inspect with a packet capture or mock server connection count).
-- [ ] Review multipart boundary generation for correctness (RFC 2046 compliance). Confirm no boundary collision with file content.
+- [x] Read every new TypeScript type added for streaming (`StreamConfig`, `ChunkArtifact`, `StreamAssertions`, etc.) and verify they match the YAML schema in this document exactly — no extra fields, no missing fields.
+- [x] Confirm `response.mode` is validated at definition-load time: only `buffered`, `stream`, and `binary` are accepted; any other value produces a structured diagnostic with `file:line`.
+- [x] Walk through the `packages/http` streaming implementation and verify that chunk capture happens inside the same code path regardless of whether the caller is CLI or MCP (no forked logic).
+- [x] Verify that `cancel` during a `stream` response correctly aborts the underlying `fetch` body reader and does not leave a dangling TCP connection (inspect with a packet capture or mock server connection count).
+- [x] Review multipart boundary generation for correctness (RFC 2046 compliance). Confirm no boundary collision with file content.
 - [ ] Confirm binary `saveTo` paths that escape the `.httpi/` directory are rejected or warned about.
 
 ---
@@ -530,8 +530,8 @@ Aggregate artifacts: per-iteration JSONL plus a `summary.json` with percentile m
 
 **Human review checkpoints:**
 
-- [ ] Review the assertion matcher vocabulary in `packages/execution` (or wherever it lands). Confirm it is a closed, enumerated set — no `eval`, no user-supplied predicate functions, no template expressions inside matchers.
-- [ ] Verify every matcher produces the same structured result shape: `{ path, matcher, expected, actual, passed }`. No matcher should return a bare boolean.
+- [x] Review the assertion matcher vocabulary in `packages/execution` (or wherever it lands). Confirm it is a closed, enumerated set — no `eval`, no user-supplied predicate functions, no template expressions inside matchers.
+- [x] Verify every matcher produces the same structured result shape: `{ path, matcher, expected, actual, passed }`. No matcher should return a bare boolean.
 - [ ] Confirm `schemaVersion` is checked when loading assertions. If a YAML file uses a matcher introduced in a later schema version, the loader must reject it with a clear diagnostic rather than silently ignoring it.
 - [ ] Review B4/B5 provider call paths. Confirm the judge/embedder HTTP call goes through the same engine path as any other request (with redaction, timeout, artifact capture). It must NOT use a separate HTTP client.
 - [ ] Confirm B4 cache keys are derived from a hash of the input content + rubric content, not from the session ID or step ID. Changing the rubric must invalidate the cache.
@@ -1030,9 +1030,9 @@ Running against a guarded env without meeting conditions fails with exit code `2
 
 **Human review checkpoints:**
 
-- [ ] Review every auth scheme implementation for secret lifecycle: confirm the secret is resolved into memory, used for header/signature computation, and then NOT stored anywhere (no writing to disk, no logging, no inclusion in event payloads).
+- [x] Review every auth scheme implementation for secret lifecycle: confirm the secret is resolved into memory, used for header/signature computation, and then NOT stored anywhere (no writing to disk, no logging, no inclusion in event payloads).
 - [ ] Verify `.httpi/auth/` token cache files are encrypted or at minimum excluded from any export/audit command. Confirm they are cleaned up on `httpi clean`.
-- [ ] Review the HMAC signing template mini-grammar parser. Confirm it is a closed substitution grammar (`{method}`, `{path}`, `{timestamp}`, `{body.sha256}`) — no arbitrary expressions, no `eval`.
+- [x] Review the HMAC signing template mini-grammar parser. Confirm it is a closed substitution grammar (`{method}`, `{path}`, `{timestamp}`, `{body.sha256}`) — no arbitrary expressions, no `eval`.
 - [ ] Verify `oauth2-authorization-code` local redirect listener validates the `state` parameter to prevent CSRF.
 - [ ] Review D4 guard evaluation order. Confirm guards are evaluated BEFORE any request compilation or secret resolution occurs — a guarded env must not trigger vault calls.
 - [ ] Audit the `denyHosts` guard implementation. Confirm it checks the resolved URL's hostname, not just the template string, to prevent bypasses via variable indirection.
@@ -1168,10 +1168,10 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 - [ ] **E1 `read_artifact` summary mode.** Call `read_artifact(sessionId, stepId, summary: true)`. Verify the output includes top-level keys, types, array lengths, and a truncated preview. Verify the full body is NOT returned.
 - [ ] **E1 `read_artifact` with JMESPath/JSONPath.** Call `read_artifact` with `jmespath: "user.name"`. Verify only the extracted value is returned, not the full body.
 - [ ] **E1 CLI parity.** Run `httpi artifacts read <path> --summary` and `--full`. Verify `--summary` matches the MCP summary mode output. Verify `--jq` produces equivalent results to MCP's `jmespath`.
-- [ ] **E2 structured diagnostic — validation error.** Load a YAML file with a typo in a required field. Verify the diagnostic includes `{ file, line, column, code, message, hint }` and that `file:line` points to the exact YAML key.
-- [ ] **E2 structured diagnostic — assertion failure.** Run an assertion that fails. Verify the diagnostic includes `file:line` pointing to the `expect:` block in the YAML definition.
-- [ ] **E2 structured diagnostic — drift detection.** Modify a tracked file between pause and resume. Verify the drift diagnostic includes `file:line` for the changed definition.
-- [ ] **E2 CLI output format.** Verify CLI prints diagnostics with a `file:line` prefix (e.g., `httpi/requests/users/get.yaml:12: error[E001]: ...`). Verify MCP returns them as structured JSON objects.
+- [x] **E2 structured diagnostic — validation error.** Load a YAML file with a typo in a required field. Verify the diagnostic includes `{ file, line, column, code, message, hint }` and that `file:line` points to the exact YAML key.
+- [x] **E2 structured diagnostic — assertion failure.** Run an assertion that fails. Verify the diagnostic includes `file:line` pointing to the `expect:` block in the YAML definition.
+- [x] **E2 structured diagnostic — drift detection.** Modify a tracked file between pause and resume. Verify the drift diagnostic includes `file:line` for the changed definition.
+- [x] **E2 CLI output format.** Verify CLI prints diagnostics with a `file:line` prefix (e.g., `httpi/requests/users/get.yaml:12: error[E001]: ...`). Verify MCP returns them as structured JSON objects.
 - [ ] **E3 mutation gating — default pause.** Create a run with a `POST` step. Run without `--confirm-all`. Verify the run pauses before the POST step with a structured approval request. Resume; verify the step executes.
 - [ ] **E3 mutation gating — `allow` override.** Set `confirmation.overrides: [{ step: login, allow: true }]` on a POST step. Verify it does NOT pause.
 - [ ] **E3 mutation gating — `--confirm-all`.** Run with `--confirm-all`. Verify no mutation pauses occur.

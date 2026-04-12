@@ -4,6 +4,7 @@ import type {
   HttpExecutionResult,
   JsonValue,
 } from "@exit-zero-labs/httpi-contracts";
+import { appendDiagnosticPath } from "@exit-zero-labs/httpi-contracts";
 import {
   exitCodes,
   HttpiError,
@@ -33,11 +34,23 @@ export function extractStepOutputs(
     const extractedValue = readJsonPath(parsedBody, definition.from);
     if (extractedValue === undefined) {
       if (definition.required) {
-        throw new HttpiError(
-          "EXTRACTION_FAILED",
-          `Required extraction ${name} was not found at ${definition.from}.`,
-          { exitCode: exitCodes.executionFailure },
-        );
+        const message = `Required extraction ${name} was not found at ${definition.from}.`;
+        throw new HttpiError("EXTRACTION_FAILED", message, {
+          exitCode: exitCodes.executionFailure,
+          details: [
+            {
+              level: "error" as const,
+              code: "EXTRACTION_FAILED",
+              message,
+              hint: "Update the extraction path if the response contract changed, or verify that the response still includes this field.",
+              filePath: step.request.filePath,
+              path: appendDiagnosticPath(
+                appendDiagnosticPath("extract", name),
+                "from",
+              ),
+            },
+          ],
+        });
       }
       continue;
     }
@@ -64,6 +77,13 @@ function safeJsonParse(value: string): JsonValue | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function extractJsonPath(
+  value: JsonValue | undefined | null,
+  path: string,
+): unknown {
+  return readJsonPath(value as JsonValue | undefined, path);
 }
 
 function readJsonPath(value: JsonValue | undefined, path: string): unknown {

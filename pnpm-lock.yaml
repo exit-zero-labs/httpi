@@ -48,6 +48,9 @@ importers:
 
   apps/mcp:
     dependencies:
+      '@exit-zero-labs/httpi-contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@exit-zero-labs/httpi-execution':
         specifier: workspace:*
         version: link:../../packages/execution

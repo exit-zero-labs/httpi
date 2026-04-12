@@ -423,6 +423,10 @@ test("CLI and MCP pin documented validation and runtime error contracts", async 
     ]);
     assert.equal(unresolvedDescribe.code, 2);
     assert.match(unresolvedDescribe.stderr, /Unable to resolve userId/);
+    assert.match(
+      unresolvedDescribe.stderr,
+      /missing-input\.request\.yaml:4:\d+: error\[VARIABLE_UNRESOLVED\]/,
+    );
 
     const extractionFailure = await runNodeProcess(process.execPath, [
       cliEntrypoint,
@@ -433,11 +437,29 @@ test("CLI and MCP pin documented validation and runtime error contracts", async 
       projectRoot,
     ]);
     assert.equal(extractionFailure.code, 1);
+    assert.match(
+      extractionFailure.stderr,
+      /extraction-failure\.request\.yaml:9:\d+: error\[EXTRACTION_FAILED\]/,
+    );
     const failedExtraction = JSON.parse(extractionFailure.stdout);
     assert.match(
       failedExtraction.session.failureReason,
       /Required extraction missingValue was not found at \$\.missing\./,
     );
+    const extractionDiagnostic = failedExtraction.diagnostics.find(
+      (diagnostic) => diagnostic.code === "EXTRACTION_FAILED",
+    );
+    assert(extractionDiagnostic);
+    assert.equal(
+      extractionDiagnostic.file,
+      "httpi/requests/security/extraction-failure.request.yaml",
+    );
+    assert.equal(
+      extractionDiagnostic.filePath,
+      "httpi/requests/security/extraction-failure.request.yaml",
+    );
+    assert.equal(extractionDiagnostic.line, 9);
+    assert.equal(extractionDiagnostic.path, "extract.missingValue.from");
 
     await client.connect(transport);
 
@@ -462,6 +484,60 @@ test("CLI and MCP pin documented validation and runtime error contracts", async 
     assert.equal(missingToolTarget.isError, true);
     const missingToolPayload = JSON.parse(missingToolTarget.content[0].text);
     assert.equal(missingToolPayload.code, "RUN_TARGET_REQUIRED");
+
+    const missingInputTool = await client.callTool({
+      name: "describe_request",
+      arguments: {
+        projectRoot,
+        requestId: "security/missing-input",
+      },
+    });
+    assert.equal(missingInputTool.isError, true);
+    const missingInputPayload = JSON.parse(missingInputTool.content[0].text);
+    assert.deepEqual(missingInputTool.structuredContent, missingInputPayload);
+    const missingInputDiagnostic = missingInputPayload.diagnostics.find(
+      (diagnostic) => diagnostic.code === "VARIABLE_UNRESOLVED",
+    );
+    assert(missingInputDiagnostic);
+    assert.equal(
+      missingInputDiagnostic.file,
+      "httpi/requests/security/missing-input.request.yaml",
+    );
+    assert.equal(
+      missingInputDiagnostic.filePath,
+      "httpi/requests/security/missing-input.request.yaml",
+    );
+    assert.equal(missingInputDiagnostic.line, 4);
+    assert.equal(missingInputDiagnostic.path, "url");
+
+    const extractionFailureTool = await client.callTool({
+      name: "run_definition",
+      arguments: {
+        projectRoot,
+        requestId: "security/extraction-failure",
+      },
+    });
+    const extractionFailurePayload = JSON.parse(
+      extractionFailureTool.content[0].text,
+    );
+    assert.deepEqual(
+      extractionFailureTool.structuredContent,
+      extractionFailurePayload,
+    );
+    const extractionToolDiagnostic = extractionFailurePayload.diagnostics.find(
+      (diagnostic) => diagnostic.code === "EXTRACTION_FAILED",
+    );
+    assert(extractionToolDiagnostic);
+    assert.equal(
+      extractionToolDiagnostic.file,
+      "httpi/requests/security/extraction-failure.request.yaml",
+    );
+    assert.equal(
+      extractionToolDiagnostic.filePath,
+      "httpi/requests/security/extraction-failure.request.yaml",
+    );
+    assert.equal(extractionToolDiagnostic.line, 9);
+    assert.equal(extractionToolDiagnostic.path, "extract.missingValue.from");
   } finally {
     await client.close().catch(() => undefined);
     await transport.close().catch(() => undefined);
@@ -678,8 +754,170 @@ test("CLI resume reports drift details for changed tracked files", async () => {
     assert.equal(resumeResult.code, 3);
     assert.match(resumeResult.stderr, /smoke\.run\.yaml/);
     assert.match(resumeResult.stderr, /DEFINITION_DRIFT/);
+    assert.match(
+      resumeResult.stderr,
+      /smoke\.run\.yaml:1:1: error\[DEFINITION_DRIFT\]/,
+    );
   } finally {
     server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI validate prints file-located diagnostics while stdout stays structured", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "runs", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(projectRoot, "httpi", "runs", "security", "invalid.run.yaml"),
+      [
+        "kind: run",
+        "title: Invalid run",
+        "env: missing-env",
+        "steps:",
+        "  - kind: parallel",
+        "    id: invalid-parallel",
+        "    steps:",
+        "      - kind: pause",
+        '        id: "stop-here"',
+        '        reason: "not allowed"',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const validation = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "validate",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(validation.code, 2);
+    assert.match(
+      validation.stderr,
+      /invalid\.run\.yaml:3:1: error\[RUN_ENV_NOT_FOUND\]/,
+    );
+
+    const validationResult = JSON.parse(validation.stdout);
+    const envDiagnostic = validationResult.diagnostics.find(
+      (diagnostic) => diagnostic.code === "RUN_ENV_NOT_FOUND",
+    );
+    assert(envDiagnostic);
+    assert.equal(envDiagnostic.level, "error");
+    assert.equal(envDiagnostic.file, "httpi/runs/security/invalid.run.yaml");
+    assert.match(envDiagnostic.filePath, /invalid\.run\.yaml$/);
+    assert.equal(envDiagnostic.line, 3);
+    assert.equal(envDiagnostic.column, 1);
+    assert.match(
+      envDiagnostic.hint,
+      /Create the missing referenced definition or update this reference/,
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI list prints diagnostics for invalid projects on stderr", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "runs", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(projectRoot, "httpi", "runs", "security", "invalid.run.yaml"),
+      [
+        "kind: run",
+        "title: Invalid run",
+        "env: missing-env",
+        "steps:",
+        "  - kind: parallel",
+        "    id: invalid-parallel",
+        "    steps:",
+        "      - kind: pause",
+        '        id: "stop-here"',
+        '        reason: "not allowed"',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const listResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "list",
+      "requests",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(listResult.code, 0);
+    assert.match(
+      listResult.stderr,
+      /invalid\.run\.yaml:3:1: error\[RUN_ENV_NOT_FOUND\]/,
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI describe and explain surface result diagnostics on stderr", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "secret-warning.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Secret warning",
+        "method: GET",
+        'url: "{{baseUrl}}/ping"',
+        "headers:",
+        "  authorization: Bearer literal-secret-token",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const describeResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "describe",
+      "--request",
+      "security/secret-warning",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(describeResult.code, 2);
+    assert.match(
+      describeResult.stderr,
+      /secret-warning\.request\.yaml:6:\d+: error\[SECRET_LITERAL\]/,
+    );
+
+    const explainResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "explain",
+      "variables",
+      "--request",
+      "security/secret-warning",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(explainResult.code, 2);
+    assert.match(
+      explainResult.stderr,
+      /secret-warning\.request\.yaml:6:\d+: error\[SECRET_LITERAL\]/,
+    );
+  } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
@@ -717,8 +955,274 @@ test("CLI rejects body file paths that escape httpi/bodies", async () => {
       projectRoot,
     ]);
     assert.equal(runResult.code, 2);
-    assert.match(runResult.stderr, /must stay within httpi\/bodies/);
+    assert.match(
+      runResult.stderr,
+      /escape\.request\.yaml:6:\d+: error\[BODY_FILE_PATH_INVALID\]/,
+    );
   } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI and MCP surface body-file template diagnostics with file locations", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+  const client = new Client(
+    { name: "httpi-body-template-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [mcpEntrypoint],
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "bodies", "security"), {
+      recursive: true,
+    });
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(projectRoot, "httpi", "bodies", "security", "template.json"),
+      '{"token":"{{missingToken}}"}\n',
+      "utf8",
+    );
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "body-template.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Body Template",
+        "method: POST",
+        'url: "{{baseUrl}}/auth/login"',
+        "body:",
+        "  file: security/template.json",
+        "  contentType: application/json",
+        "expect:",
+        "  status: 200",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const describeResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "describe",
+      "--request",
+      "security/body-template",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(describeResult.code, 2);
+    assert.match(
+      describeResult.stderr,
+      /template\.json:1:1: error\[VARIABLE_UNRESOLVED\]/,
+    );
+
+    await client.connect(transport);
+    const describedRequest = await client.callTool({
+      name: "describe_request",
+      arguments: {
+        projectRoot,
+        requestId: "security/body-template",
+      },
+    });
+    assert.equal(describedRequest.isError, true);
+    const describedPayload = JSON.parse(describedRequest.content[0].text);
+    assert.deepEqual(describedRequest.structuredContent, describedPayload);
+    const bodyDiagnostic = describedPayload.diagnostics.find(
+      (diagnostic) => diagnostic.code === "VARIABLE_UNRESOLVED",
+    );
+    assert(bodyDiagnostic);
+    assert.equal(bodyDiagnostic.file, "httpi/bodies/security/template.json");
+    assert.equal(bodyDiagnostic.filePath, "httpi/bodies/security/template.json");
+    assert.equal(bodyDiagnostic.line, 1);
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI and MCP surface missing body-file diagnostics with file locations", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+  const client = new Client(
+    { name: "httpi-missing-body-file-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [mcpEntrypoint],
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "missing-body-file.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Missing body file",
+        "method: POST",
+        'url: "{{baseUrl}}/auth/login"',
+        "body:",
+        "  file: security/does-not-exist.json",
+        "  contentType: application/json",
+        "expect:",
+        "  status: 200",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const describeResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "describe",
+      "--request",
+      "security/missing-body-file",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(describeResult.code, 2);
+    assert.match(
+      describeResult.stderr,
+      /missing-body-file\.request\.yaml:6:\d+: error\[BODY_FILE_NOT_FOUND\]/,
+    );
+
+    await client.connect(transport);
+    const describedRequest = await client.callTool({
+      name: "describe_request",
+      arguments: {
+        projectRoot,
+        requestId: "security/missing-body-file",
+      },
+    });
+    assert.equal(describedRequest.isError, true);
+    const describedPayload = JSON.parse(describedRequest.content[0].text);
+    assert.deepEqual(describedRequest.structuredContent, describedPayload);
+    const bodyDiagnostic = describedPayload.diagnostics.find(
+      (diagnostic) => diagnostic.code === "BODY_FILE_NOT_FOUND",
+    );
+    assert(bodyDiagnostic);
+    assert.equal(
+      bodyDiagnostic.file,
+      "httpi/requests/security/missing-body-file.request.yaml",
+    );
+    assert.equal(
+      bodyDiagnostic.filePath,
+      "httpi/requests/security/missing-body-file.request.yaml",
+    );
+    assert.equal(bodyDiagnostic.line, 6);
+    assert.equal(bodyDiagnostic.path, "body.file");
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI and MCP surface nested JSON body diagnostics with exact paths", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+  const client = new Client(
+    { name: "httpi-json-body-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [mcpEntrypoint],
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "nested-json.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Nested JSON",
+        "method: POST",
+        'url: "{{baseUrl}}/auth/login"',
+        "body:",
+        "  json:",
+        "    user:",
+        "      credentials:",
+        '        token: "{{missingToken}}"',
+        "expect:",
+        "  status: 200",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const describeResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "describe",
+      "--request",
+      "security/nested-json",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(describeResult.code, 2);
+    assert.match(
+      describeResult.stderr,
+      /nested-json\.request\.yaml:9:\d+: error\[VARIABLE_UNRESOLVED\]/,
+    );
+
+    await client.connect(transport);
+    const describedRequest = await client.callTool({
+      name: "describe_request",
+      arguments: {
+        projectRoot,
+        requestId: "security/nested-json",
+      },
+    });
+    assert.equal(describedRequest.isError, true);
+    const describedPayload = JSON.parse(describedRequest.content[0].text);
+    assert.deepEqual(describedRequest.structuredContent, describedPayload);
+    const bodyDiagnostic = describedPayload.diagnostics.find(
+      (diagnostic) => diagnostic.code === "VARIABLE_UNRESOLVED",
+    );
+    assert(bodyDiagnostic);
+    assert.equal(
+      bodyDiagnostic.file,
+      "httpi/requests/security/nested-json.request.yaml",
+    );
+    assert.equal(
+      bodyDiagnostic.path,
+      "body.json.user.credentials.token",
+    );
+    assert.equal(bodyDiagnostic.line, 9);
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
@@ -956,6 +1460,7 @@ test("CLI resume rejects changed $ENV inputs", async () => {
         "method: GET",
         'url: "{{baseUrl}}/ping"',
         "headers:",
+        "  # This comment reuses $ENV:API_TOKEN to prove drift lookup ignores comments.",
         '  authorization: "$ENV:API_TOKEN"',
         "expect:",
         "  status: 200",
@@ -1019,6 +1524,10 @@ test("CLI resume rejects changed $ENV inputs", async () => {
     assert.equal(resumeResult.code, 3);
     assert.match(resumeResult.stderr, /PROCESS_ENV_DRIFT/);
     assert.match(resumeResult.stderr, /API_TOKEN/);
+    assert.match(
+      resumeResult.stderr,
+      /env-drift\.request\.yaml:7:\d+: error\[PROCESS_ENV_DRIFT\]/,
+    );
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
@@ -1063,6 +1572,169 @@ test("CLI validate rejects step ids that collide after artifact path sanitizatio
       ),
     );
   } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI and MCP surface assertion diagnostics with exact request locations", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const client = new Client(
+    { name: "httpi-assertion-test-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [mcpEntrypoint],
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "status-mismatch.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Status mismatch",
+        "method: GET",
+        'url: "{{baseUrl}}/ping"',
+        "expect:",
+        "  status: 201",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--request",
+      "security/status-mismatch",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 1);
+    assert.match(
+      runResult.stderr,
+      /status-mismatch\.request\.yaml:6:\d+: error\[EXPECTATION_FAILED\]/,
+    );
+
+    const execution = JSON.parse(runResult.stdout);
+    assert.equal(execution.session.state, "failed");
+    const cliDiagnostic = execution.diagnostics.find(
+      (diagnostic) => diagnostic.code === "EXPECTATION_FAILED",
+    );
+    assert(cliDiagnostic);
+    assert.equal(cliDiagnostic.level, "error");
+    assert.match(cliDiagnostic.file, /status-mismatch\.request\.yaml$/);
+    assert.equal(cliDiagnostic.line, 6);
+    assert.equal(cliDiagnostic.column, 3);
+    assert.equal(cliDiagnostic.path, "expect.status");
+    assert.match(
+      cliDiagnostic.hint,
+      /Update the expect block if the contract changed/,
+    );
+
+    await client.connect(transport);
+    const mcpRun = await client.callTool({
+      name: "run_definition",
+      arguments: {
+        projectRoot,
+        requestId: "security/status-mismatch",
+      },
+    });
+    const mcpExecution = JSON.parse(mcpRun.content[0].text);
+    assert.equal(mcpExecution.session.state, "failed");
+    assert.deepEqual(mcpRun.structuredContent, mcpExecution);
+    const mcpDiagnostic = mcpExecution.diagnostics.find(
+      (diagnostic) => diagnostic.code === "EXPECTATION_FAILED",
+    );
+    assert(mcpDiagnostic);
+    assert.equal(mcpDiagnostic.level, "error");
+    assert.match(mcpDiagnostic.file, /status-mismatch\.request\.yaml$/);
+    assert.equal(mcpDiagnostic.line, 6);
+    assert.equal(mcpDiagnostic.column, 3);
+    assert.equal(mcpDiagnostic.path, "expect.status");
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("MCP resume_session exposes structured drift diagnostics", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const client = new Client(
+    { name: "httpi-drift-test-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [mcpEntrypoint],
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    await client.connect(transport);
+
+    const pausedRun = await client.callTool({
+      name: "run_definition",
+      arguments: {
+        projectRoot,
+        runId: "smoke",
+      },
+    });
+    const pausedExecution = JSON.parse(pausedRun.content[0].text);
+    assert.equal(pausedExecution.session.state, "paused");
+
+    const sessionId = pausedExecution.session.sessionId;
+    await writeFile(
+      join(projectRoot, "httpi", "runs", "smoke.run.yaml"),
+      `${await readFile(join(projectRoot, "httpi", "runs", "smoke.run.yaml"), "utf8")}\n# drift\n`,
+      "utf8",
+    );
+
+    const resumed = await client.callTool({
+      name: "resume_session",
+      arguments: {
+        projectRoot,
+        sessionId,
+      },
+    });
+    assert.equal(resumed.isError, true);
+    const payload = JSON.parse(resumed.content[0].text);
+    assert.equal(payload.code, "SESSION_DRIFT_DETECTED");
+
+    const diagnostic = payload.diagnostics.find(
+      (entry) => entry.code === "DEFINITION_DRIFT",
+    );
+    assert(diagnostic);
+    assert.equal(diagnostic.level, "error");
+    assert.match(diagnostic.file, /smoke\.run\.yaml$/);
+    assert.equal(diagnostic.line, 1);
+    assert.equal(diagnostic.column, 1);
+    assert.match(
+      diagnostic.hint,
+      /Start a fresh run or revert the tracked file before resuming/,
+    );
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+    server.close();
     await rm(projectRoot, { recursive: true, force: true });
   }
 });
@@ -1589,7 +2261,7 @@ test("CLI preserves failed session context and redacted artifacts after runtime 
     assert.equal(failedExecution.session.nextStepId, "fail-user");
     assert.match(
       failedExecution.session.failureReason,
-      /Expected status 200 but received 500/,
+      /status.*expected.*200.*got.*500/,
     );
     assert.equal(
       failedExecution.session.stepRecords["fail-user"].state,
@@ -1610,7 +2282,7 @@ test("CLI preserves failed session context and redacted artifacts after runtime 
     assert.equal(shownFailure.session.state, "failed");
     assert.match(
       shownFailure.session.stepRecords["fail-user"].errorMessage,
-      /Expected status 200 but received 500/,
+      /status.*expected.*200.*got.*500/,
     );
 
     const artifactsList = await runNodeProcess(process.execPath, [
@@ -1887,6 +2559,98 @@ test("CLI surfaces timeout failures for slow requests", async () => {
     );
   } finally {
     server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI and MCP surface invalid timeout diagnostics with source locations", async () => {
+  const projectRoot = await createFixtureProject("http://127.0.0.1:1");
+  const client = new Client(
+    { name: "httpi-timeout-diagnostic-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [mcpEntrypoint],
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "qa"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(projectRoot, "httpi", "env", "dev.env.yaml"),
+      [
+        "schemaVersion: 1",
+        "title: Development",
+        "values:",
+        "  baseUrl: http://127.0.0.1:1",
+        "  timeoutMs: 0",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      join(projectRoot, "httpi", "requests", "qa", "invalid-timeout.request.yaml"),
+      [
+        "kind: request",
+        "title: Invalid timeout",
+        "method: GET",
+        'url: "{{baseUrl}}/ping"',
+        "expect:",
+        "  status: 200",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--request",
+      "qa/invalid-timeout",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 1);
+    assert.match(
+      runResult.stderr,
+      /dev\.env\.yaml:5:\d+: error\[REQUEST_TIMEOUT_INVALID\]/,
+    );
+    const failedExecution = JSON.parse(runResult.stdout);
+    const timeoutDiagnostic = failedExecution.diagnostics.find(
+      (diagnostic) => diagnostic.code === "REQUEST_TIMEOUT_INVALID",
+    );
+    assert(timeoutDiagnostic);
+    assert.equal(timeoutDiagnostic.file, "httpi/env/dev.env.yaml");
+    assert.equal(timeoutDiagnostic.filePath, "httpi/env/dev.env.yaml");
+    assert.equal(timeoutDiagnostic.line, 5);
+    assert.equal(timeoutDiagnostic.path, "values.timeoutMs");
+
+    await client.connect(transport);
+    const mcpRun = await client.callTool({
+      name: "run_definition",
+      arguments: {
+        projectRoot,
+        requestId: "qa/invalid-timeout",
+      },
+    });
+    const mcpExecution = JSON.parse(mcpRun.content[0].text);
+    assert.deepEqual(mcpRun.structuredContent, mcpExecution);
+    const mcpTimeoutDiagnostic = mcpExecution.diagnostics.find(
+      (diagnostic) => diagnostic.code === "REQUEST_TIMEOUT_INVALID",
+    );
+    assert(mcpTimeoutDiagnostic);
+    assert.equal(mcpTimeoutDiagnostic.file, "httpi/env/dev.env.yaml");
+    assert.equal(mcpTimeoutDiagnostic.filePath, "httpi/env/dev.env.yaml");
+    assert.equal(mcpTimeoutDiagnostic.line, 5);
+    assert.equal(mcpTimeoutDiagnostic.path, "values.timeoutMs");
+  } finally {
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
     await rm(projectRoot, { recursive: true, force: true });
   }
 });

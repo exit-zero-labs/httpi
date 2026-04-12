@@ -92,6 +92,7 @@ export function compileRunSnapshot(
     source: "run",
     runId,
     title: runFile.title,
+    sourceFilePath: runFile.filePath,
     envId: envFile.id,
     configPath: project.configPath,
     configHash: project.configHash,
@@ -104,6 +105,7 @@ export function compileRunSnapshot(
     overrideKeys,
     definitionHashes,
     steps: compiledSteps,
+    envGuards: envFile.definition.guards,
     createdAt: toIsoTimestamp(),
   };
   compiledSnapshot.processEnvHashes = collectProcessEnvHashes(
@@ -156,6 +158,7 @@ export function compileRequestSnapshot(
     source: "request",
     runId: requestId,
     title: requestFile.title,
+    sourceFilePath: requestFile.filePath,
     envId: envFile.id,
     configPath: project.configPath,
     configHash: project.configHash,
@@ -168,6 +171,7 @@ export function compileRequestSnapshot(
     overrideKeys,
     definitionHashes,
     steps: [step],
+    envGuards: envFile.definition.guards,
     createdAt: toIsoTimestamp(),
   };
   compiledSnapshot.processEnvHashes = collectProcessEnvHashes(
@@ -202,6 +206,28 @@ function compileRunSteps(
       };
     }
 
+    if (step.kind === "pollUntil") {
+      const requestStep = compileRunRequestStep(
+        project,
+        {
+          kind: "request",
+          id: `${step.id}-poll`,
+          uses: step.request.uses,
+          with: step.request.with,
+        },
+        definitionHashes,
+      );
+      return {
+        kind: "pollUntil",
+        id: step.id,
+        requestStep,
+        until: step.until,
+        intervalMs: step.intervalMs,
+        maxAttempts: step.maxAttempts ?? 60,
+        timeoutMs: step.timeoutMs,
+      };
+    }
+
     return compileRunRequestStep(project, step, definitionHashes);
   });
 }
@@ -226,6 +252,8 @@ function compileRunRequestStep(
     requestId: requestFile.id,
     with: step.with ?? {},
     request: compileRequestDefinition(project, requestFile, definitionHashes),
+    retry: step.retry,
+    idempotency: step.idempotency,
   };
 }
 
@@ -292,9 +320,11 @@ function compileRequestDefinition(
     auth: requestFile.definition.auth,
     authBlock,
     body: requestFile.definition.body,
+    response: requestFile.definition.response,
     expect: requestFile.definition.expect ?? {},
     extract: requestFile.definition.extract ?? {},
     timeoutMs: requestFile.definition.timeoutMs,
+    cancel: requestFile.definition.cancel,
   };
 }
 
@@ -311,11 +341,26 @@ function trackRequestBodyFileHash(
   const trackedRoot = dirname(project.configPath);
   const bodiesDirectory = resolveFromRoot(trackedRoot, "bodies");
   const bodyFilePath = resolveFromRoot(bodiesDirectory, bodyDefinition.file);
-  assertPathWithin(bodiesDirectory, bodyFilePath, {
-    code: "BODY_FILE_PATH_INVALID",
-    message: `Body file ${bodyDefinition.file} must stay within httpi/bodies.`,
-    exitCode: exitCodes.validationFailure,
-  });
+  try {
+    assertPathWithin(bodiesDirectory, bodyFilePath, {
+      code: "BODY_FILE_PATH_INVALID",
+      message: `Body file ${bodyDefinition.file} must stay within httpi/bodies.`,
+      exitCode: exitCodes.validationFailure,
+    });
+  } catch (error) {
+    if (
+      error instanceof HttpiError &&
+      error.code === "BODY_FILE_PATH_INVALID"
+    ) {
+      throw buildBodyFileDiagnosticError(
+        requestFile.filePath,
+        error.message,
+        "Update body.file so it points to a real tracked file inside httpi/bodies.",
+      );
+    }
+
+    throw error;
+  }
 
   const bodyFileStats = readFileStatsIfPresent(bodyFilePath);
   if (!bodyFileStats) {
@@ -327,11 +372,26 @@ function trackRequestBodyFileHash(
 
   const resolvedBodiesDirectory = realpathSync(bodiesDirectory);
   const resolvedBodyFilePath = realpathSync(bodyFilePath);
-  assertPathWithin(resolvedBodiesDirectory, resolvedBodyFilePath, {
-    code: "BODY_FILE_PATH_INVALID",
-    message: `Body file ${bodyDefinition.file} must stay within httpi/bodies.`,
-    exitCode: exitCodes.validationFailure,
-  });
+  try {
+    assertPathWithin(resolvedBodiesDirectory, resolvedBodyFilePath, {
+      code: "BODY_FILE_PATH_INVALID",
+      message: `Body file ${bodyDefinition.file} must stay within httpi/bodies.`,
+      exitCode: exitCodes.validationFailure,
+    });
+  } catch (error) {
+    if (
+      error instanceof HttpiError &&
+      error.code === "BODY_FILE_PATH_INVALID"
+    ) {
+      throw buildBodyFileDiagnosticError(
+        requestFile.filePath,
+        error.message,
+        "Update body.file so it points to a real tracked file inside httpi/bodies.",
+      );
+    }
+
+    throw error;
+  }
   definitionHashes[bodyFilePath] = sha256Hex(
     readFileSync(resolvedBodyFilePath),
   );
@@ -343,6 +403,26 @@ function readFileStatsIfPresent(filePath: string) {
   } catch {
     return undefined;
   }
+}
+
+function buildBodyFileDiagnosticError(
+  filePath: string,
+  message: string,
+  hint: string,
+): HttpiError {
+  return new HttpiError("BODY_FILE_PATH_INVALID", message, {
+    exitCode: exitCodes.validationFailure,
+    details: [
+      {
+        level: "error" as const,
+        code: "BODY_FILE_PATH_INVALID",
+        message,
+        hint,
+        filePath,
+        path: "body.file",
+      },
+    ],
+  });
 }
 
 function collectProcessEnvHashes(

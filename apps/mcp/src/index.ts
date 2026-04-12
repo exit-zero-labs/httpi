@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { isDiagnostic } from "@exit-zero-labs/httpi-contracts";
 import {
   describeRequest,
   describeRun,
@@ -14,6 +15,7 @@ import {
   validateProject,
 } from "@exit-zero-labs/httpi-execution";
 import {
+  asRecord,
   coerceErrorMessage,
   exitCodes,
   HttpiError,
@@ -41,6 +43,130 @@ const executionOptionsSchema = {
   overrides: overridesSchema.optional(),
 };
 
+const diagnosticSchema = z.object({
+  level: z.enum(["error", "warning"]),
+  code: z.string(),
+  message: z.string(),
+  hint: z.string(),
+  file: z.string(),
+  filePath: z.string(),
+  line: z.number(),
+  column: z.number(),
+  path: z.string().optional(),
+});
+
+const definitionSummarySchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  filePath: z.string(),
+});
+
+const sessionSummarySchema = z.object({
+  sessionId: z.string(),
+  runId: z.string(),
+  envId: z.string(),
+  state: z.enum(["created", "running", "paused", "failed", "completed"]),
+  nextStepId: z.string().optional(),
+  updatedAt: z.string(),
+});
+
+const variableExplanationSchema = z.object({
+  name: z.string(),
+  value: flatValueSchema.optional(),
+  source: z.enum([
+    "override",
+    "step",
+    "run",
+    "request",
+    "env",
+    "config",
+    "secret",
+    "process-env",
+  ]),
+  secret: z.boolean().optional(),
+});
+
+const artifactEntrySchema = z.object({
+  schemaVersion: z.number(),
+  sessionId: z.string(),
+  stepId: z.string(),
+  attempt: z.number(),
+  kind: z.enum(["request.summary", "response.meta", "body"]),
+  relativePath: z.string(),
+  contentType: z.string().optional(),
+});
+
+const listDefinitionsOutputSchema = {
+  rootDir: z.string().optional(),
+  requests: z.array(definitionSummarySchema).optional(),
+  runs: z.array(definitionSummarySchema).optional(),
+  envs: z.array(definitionSummarySchema).optional(),
+  sessions: z.array(sessionSummarySchema).optional(),
+  diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const validateProjectOutputSchema = {
+  rootDir: z.string().optional(),
+  diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const describeRequestOutputSchema = {
+  requestId: z.string().optional(),
+  envId: z.string().optional(),
+  request: z.unknown().optional(),
+  variables: z.array(variableExplanationSchema).optional(),
+  diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const describeRunOutputSchema = {
+  runId: z.string().optional(),
+  envId: z.string().optional(),
+  title: z.string().optional(),
+  steps: z.array(z.unknown()).optional(),
+  diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const executionOutputSchema = {
+  session: z.unknown().optional(),
+  diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const artifactListOutputSchema = {
+  sessionId: z.string().optional(),
+  artifacts: z.array(artifactEntrySchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const artifactReadOutputSchema = {
+  sessionId: z.string().optional(),
+  relativePath: z.string().optional(),
+  contentType: z.string().optional(),
+  text: z.string().optional(),
+  base64: z.string().optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const explainVariablesOutputSchema = {
+  targetId: z.string().optional(),
+  envId: z.string().optional(),
+  variables: z.array(variableExplanationSchema).optional(),
+  diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "httpi",
@@ -55,6 +181,7 @@ export function createMcpServer(): McpServer {
       inputSchema: {
         ...engineOptionsSchema,
       },
+      outputSchema: listDefinitionsOutputSchema,
     },
     async ({ projectRoot }) =>
       handleTool(async () => listProjectDefinitions({ projectRoot })),
@@ -67,6 +194,7 @@ export function createMcpServer(): McpServer {
       inputSchema: {
         ...engineOptionsSchema,
       },
+      outputSchema: validateProjectOutputSchema,
     },
     async ({ projectRoot }) =>
       handleTool(async () => validateProject({ projectRoot })),
@@ -80,6 +208,7 @@ export function createMcpServer(): McpServer {
         requestId: z.string(),
         ...executionOptionsSchema,
       },
+      outputSchema: describeRequestOutputSchema,
     },
     async ({ requestId, projectRoot, envId, overrides }) =>
       handleTool(async () =>
@@ -99,6 +228,7 @@ export function createMcpServer(): McpServer {
         runId: z.string(),
         ...executionOptionsSchema,
       },
+      outputSchema: describeRunOutputSchema,
     },
     async ({ runId, projectRoot, envId, overrides }) =>
       handleTool(async () =>
@@ -120,6 +250,7 @@ export function createMcpServer(): McpServer {
         runId: z.string().optional(),
         ...executionOptionsSchema,
       },
+      outputSchema: executionOutputSchema,
     },
     async ({ requestId, runId, projectRoot, envId, overrides }) =>
       handleTool(async () => {
@@ -166,6 +297,7 @@ export function createMcpServer(): McpServer {
         sessionId: z.string(),
         ...engineOptionsSchema,
       },
+      outputSchema: executionOutputSchema,
     },
     async ({ sessionId, projectRoot }) =>
       handleTool(async () => resumeSessionRun(sessionId, { projectRoot })),
@@ -180,6 +312,7 @@ export function createMcpServer(): McpServer {
         sessionId: z.string(),
         ...engineOptionsSchema,
       },
+      outputSchema: executionOutputSchema,
     },
     async ({ sessionId, projectRoot }) =>
       handleTool(async () => getSessionState(sessionId, { projectRoot })),
@@ -194,6 +327,7 @@ export function createMcpServer(): McpServer {
         stepId: z.string().optional(),
         ...engineOptionsSchema,
       },
+      outputSchema: artifactListOutputSchema,
     },
     async ({ sessionId, stepId, projectRoot }) =>
       handleTool(async () =>
@@ -210,6 +344,7 @@ export function createMcpServer(): McpServer {
         relativePath: z.string(),
         ...engineOptionsSchema,
       },
+      outputSchema: artifactReadOutputSchema,
     },
     async ({ sessionId, relativePath, projectRoot }) =>
       handleTool(async () =>
@@ -228,6 +363,7 @@ export function createMcpServer(): McpServer {
         stepId: z.string().optional(),
         ...executionOptionsSchema,
       },
+      outputSchema: explainVariablesOutputSchema,
     },
     async ({ requestId, runId, stepId, projectRoot, envId, overrides }) =>
       handleTool(async () =>
@@ -256,7 +392,9 @@ function toolResult(result: unknown): {
     type: "text";
     text: string;
   }>;
+  structuredContent?: Record<string, unknown>;
 } {
+  const structuredContent = asRecord(result);
   return {
     content: [
       {
@@ -264,33 +402,31 @@ function toolResult(result: unknown): {
         text: JSON.stringify(result, null, 2),
       },
     ],
+    ...(structuredContent ? { structuredContent } : {}),
   };
 }
 
 function toolError(
   message: string,
   code = "MCP_TOOL_ERROR",
+  details?: unknown,
 ): {
   content: Array<{
     type: "text";
     text: string;
   }>;
+  structuredContent: Record<string, unknown>;
   isError: true;
 } {
+  const payload = buildToolErrorPayload(message, code, details);
   return {
     content: [
       {
         type: "text",
-        text: JSON.stringify(
-          {
-            code,
-            message,
-          },
-          null,
-          2,
-        ),
+        text: JSON.stringify(payload, null, 2),
       },
     ],
+    structuredContent: payload,
     isError: true,
   };
 }
@@ -300,17 +436,37 @@ async function handleTool(action: () => Promise<unknown>): Promise<{
     type: "text";
     text: string;
   }>;
+  structuredContent?: Record<string, unknown>;
   isError?: true;
 }> {
   try {
     return toolResult(await action());
   } catch (error) {
     if (error instanceof HttpiError) {
-      return toolError(error.message, error.code);
+      return toolError(error.message, error.code, error.details);
     }
 
     return toolError(coerceErrorMessage(error), "INTERNAL_ERROR");
   }
+}
+
+function buildToolErrorPayload(
+  message: string,
+  code: string,
+  details: unknown,
+): Record<string, unknown> {
+  if (Array.isArray(details) && details.every(isDiagnostic)) {
+    return {
+      code,
+      message,
+      diagnostics: details,
+    };
+  }
+
+  return {
+    code,
+    message,
+  };
 }
 
 function printUsage(): void {

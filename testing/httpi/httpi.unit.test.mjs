@@ -14,6 +14,10 @@ import {
   redactSessionForOutput,
   resolveTemplateValue,
 } from "../../packages/execution/testing.js";
+import {
+  appendDiagnosticPath,
+  toDisplayDiagnosticFile,
+} from "../../packages/contracts/dist/index.js";
 import { executeHttpRequest } from "../../packages/http/dist/index.js";
 import {
   acquireSessionLock,
@@ -165,6 +169,7 @@ test("session output redaction honors secret output metadata", () => {
       source: "run",
       runId: "smoke",
       envId: "dev",
+      sourceFilePath: "/tmp/httpi/runs/smoke.run.yaml",
       configPath: "/tmp/httpi/config.yaml",
       configHash: "config-hash",
       configDefaults: {},
@@ -857,6 +862,245 @@ test("YAML parse diagnostics include line and column details", async () => {
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }
+});
+
+test("semantic validation diagnostics include file, line, column, and hint", async () => {
+  const projectRoot = await createFixtureProjectCopy();
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "runs", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(projectRoot, "httpi", "runs", "security", "invalid.run.yaml"),
+      [
+        "kind: run",
+        "title: Invalid run",
+        "env: missing-env",
+        "steps:",
+        "  - kind: parallel",
+        "    id: invalid-parallel",
+        "    steps:",
+        "      - kind: pause",
+        "        id: stop-here",
+        '        reason: "not allowed"',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const project = await loadProjectFiles(projectRoot);
+
+    const envDiagnostic = project.diagnostics.find(
+      (diagnostic) => diagnostic.code === "RUN_ENV_NOT_FOUND",
+    );
+    assert(envDiagnostic);
+    assert.equal(envDiagnostic.file, "httpi/runs/security/invalid.run.yaml");
+    assert.match(envDiagnostic.filePath, /invalid\.run\.yaml$/);
+    assert.equal(envDiagnostic.line, 3);
+    assert.equal(envDiagnostic.column, 1);
+    assert.match(
+      envDiagnostic.hint,
+      /Create the missing referenced definition or update this reference/,
+    );
+
+    const kindDiagnostic = project.diagnostics.find(
+      (diagnostic) => diagnostic.code === "INVALID_PARALLEL_CHILD_KIND",
+    );
+    assert(kindDiagnostic);
+    assert.match(kindDiagnostic.file, /invalid\.run\.yaml$/);
+    assert.equal(kindDiagnostic.line, 8);
+    assert.equal(typeof kindDiagnostic.column, "number");
+    assert.match(
+      kindDiagnostic.hint,
+      /Use a supported step kind for this location or restructure the run/,
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("config capture diagnostics point at exact capture keys", async () => {
+  const projectRoot = await createFixtureProjectCopy();
+
+  try {
+    await writeFile(
+      join(projectRoot, "httpi", "config.yaml"),
+      [
+        "schemaVersion: 1",
+        "project: Fixture Project",
+        "capture:",
+        '  requestSummary: "yes"',
+        '  responseMetadata: "sure"',
+        '  maxBodyBytes: "huge"',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const project = await loadProjectFiles(projectRoot);
+
+    const requestSummaryDiagnostic = project.diagnostics.find(
+      (diagnostic) => diagnostic.path === "capture.requestSummary",
+    );
+    assert(requestSummaryDiagnostic);
+    assert.equal(requestSummaryDiagnostic.code, "INVALID_BOOLEAN");
+    assert.equal(requestSummaryDiagnostic.line, 4);
+
+    const responseMetadataDiagnostic = project.diagnostics.find(
+      (diagnostic) => diagnostic.path === "capture.responseMetadata",
+    );
+    assert(responseMetadataDiagnostic);
+    assert.equal(responseMetadataDiagnostic.code, "INVALID_BOOLEAN");
+    assert.equal(responseMetadataDiagnostic.line, 5);
+
+    const maxBodyBytesDiagnostic = project.diagnostics.find(
+      (diagnostic) => diagnostic.path === "capture.maxBodyBytes",
+    );
+    assert(maxBodyBytesDiagnostic);
+    assert.equal(maxBodyBytesDiagnostic.code, "INVALID_NUMBER");
+    assert.equal(maxBodyBytesDiagnostic.line, 6);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("typoed required keys point at the misspelled YAML key", async () => {
+  const projectRoot = await createFixtureProjectCopy();
+
+  try {
+    await writeFile(
+      join(projectRoot, "httpi", "requests", "typo.request.yaml"),
+      [
+        "kind: request",
+        "title: Typo request",
+        "mthod: GET",
+        'url: "{{baseUrl}}/ping"',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const project = await loadProjectFiles(projectRoot);
+    const methodDiagnostic = project.diagnostics.find(
+      (diagnostic) =>
+        diagnostic.code === "INVALID_STRING" &&
+        diagnostic.filePath.endsWith("typo.request.yaml"),
+    );
+    assert(methodDiagnostic);
+    assert.match(methodDiagnostic.file, /typo\.request\.yaml$/);
+    assert.equal(methodDiagnostic.line, 3);
+    assert.equal(methodDiagnostic.path, "mthod");
+    assert.match(methodDiagnostic.message, /Found mthod instead/);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("secret literal diagnostics point at dotted keys exactly", async () => {
+  const projectRoot = await createFixtureProjectCopy();
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "dotted-secret.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Dotted secret",
+        "method: GET",
+        'url: "{{baseUrl}}/ping"',
+        "headers:",
+        '  "x.api-key": super-secret-token',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const project = await loadProjectFiles(projectRoot);
+    const secretDiagnostic = project.diagnostics.find(
+      (diagnostic) =>
+        diagnostic.code === "SECRET_LITERAL" &&
+        diagnostic.filePath.endsWith("dotted-secret.request.yaml"),
+    );
+    assert(secretDiagnostic);
+    assert.equal(
+      secretDiagnostic.file,
+      "httpi/requests/security/dotted-secret.request.yaml",
+    );
+    assert.equal(secretDiagnostic.line, 6);
+    assert.equal(secretDiagnostic.path, 'headers["x.api-key"]');
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("secret literal diagnostics roundtrip escaped quoted keys", async () => {
+  const projectRoot = await createFixtureProjectCopy();
+
+  try {
+    await mkdir(join(projectRoot, "httpi", "requests", "security"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(
+        projectRoot,
+        "httpi",
+        "requests",
+        "security",
+        "quoted-secret.request.yaml",
+      ),
+      [
+        "kind: request",
+        "title: Quoted secret",
+        "method: GET",
+        'url: "{{baseUrl}}/ping"',
+        "headers:",
+        `  'x.api-key"]': super-secret-token`,
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const project = await loadProjectFiles(projectRoot);
+    const secretDiagnostic = project.diagnostics.find(
+      (diagnostic) =>
+        diagnostic.code === "SECRET_LITERAL" &&
+        diagnostic.filePath.endsWith("quoted-secret.request.yaml"),
+    );
+    assert(secretDiagnostic);
+    assert.equal(
+      secretDiagnostic.file,
+      "httpi/requests/security/quoted-secret.request.yaml",
+    );
+    assert.equal(secretDiagnostic.line, 6);
+    assert.equal(secretDiagnostic.path, 'headers["x.api-key\\"]"]');
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("diagnostic helpers keep public paths safe and stable", () => {
+  assert.equal(appendDiagnosticPath("", "first"), "first");
+  assert.equal(
+    appendDiagnosticPath("headers", 'x.api-key"]'),
+    'headers["x.api-key\\"]"]',
+  );
+  assert.equal(
+    toDisplayDiagnosticFile("/tmp/private/httpi-work/file.yaml"),
+    "<unknown>",
+  );
+  assert.equal(
+    toDisplayDiagnosticFile("httpi/requests/ping.request.yaml"),
+    "httpi/requests/ping.request.yaml",
+  );
 });
 
 function createResolutionContext() {

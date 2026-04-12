@@ -58,7 +58,7 @@ export function createYamlDiagnosticResolver(
         getNodeOffset(resolvedNode) ?? 0,
       );
       return {
-        file: filePath,
+        file: toDisplayDiagnosticFile(filePath),
         line: resolvedPosition.line ?? fallbackPosition.line ?? 1,
         column: resolvedPosition.column ?? fallbackPosition.column ?? 1,
       };
@@ -95,7 +95,7 @@ export function finalizeDiagnostic(
   diagnostic: Diagnostic,
   resolver?: YamlDiagnosticResolver,
 ): EnrichedDiagnostic {
-  const resolvedFilePath = diagnostic.filePath ?? diagnostic.file ?? resolver?.filePath;
+  const resolvedFilePath = diagnostic.file ?? diagnostic.filePath ?? resolver?.filePath;
   const resolvedLocation = diagnostic.path
     ? resolver?.resolve(diagnostic.path)
     : undefined;
@@ -124,7 +124,7 @@ function createFallbackDiagnosticResolver(filePath: string): YamlDiagnosticResol
     filePath,
     resolve() {
       return {
-        file: filePath,
+        file: toDisplayDiagnosticFile(filePath),
         line: 1,
         column: 1,
       };

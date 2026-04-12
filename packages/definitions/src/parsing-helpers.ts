@@ -7,7 +7,10 @@ import type {
   JsonValue,
   LoadedDefinition,
 } from "@exit-zero-labs/httpi-contracts";
-import { schemaVersion } from "@exit-zero-labs/httpi-contracts";
+import {
+  appendDiagnosticPath,
+  schemaVersion,
+} from "@exit-zero-labs/httpi-contracts";
 import {
   asRecord,
   looksLikeSecretFieldName,
@@ -105,10 +108,22 @@ export function normalizeCapturePolicy(
   }
 
   const requestSummary =
-    readOptionalBoolean(record, "requestSummary", filePath, diagnostics) ??
+    readOptionalBoolean(
+      record,
+      "requestSummary",
+      filePath,
+      diagnostics,
+      "capture",
+    ) ??
     defaultCapturePolicy.requestSummary;
   const responseMetadata =
-    readOptionalBoolean(record, "responseMetadata", filePath, diagnostics) ??
+    readOptionalBoolean(
+      record,
+      "responseMetadata",
+      filePath,
+      diagnostics,
+      "capture",
+    ) ??
     defaultCapturePolicy.responseMetadata;
 
   let responseBody = defaultCapturePolicy.responseBody;
@@ -131,7 +146,13 @@ export function normalizeCapturePolicy(
   }
 
   const maxBodyBytes =
-    readOptionalNumber(record, "maxBodyBytes", filePath, diagnostics) ??
+    readOptionalNumber(
+      record,
+      "maxBodyBytes",
+      filePath,
+      diagnostics,
+      "capture",
+    ) ??
     defaultCapturePolicy.maxBodyBytes;
 
   const redactHeadersValue = record.redactHeaders;
@@ -166,6 +187,7 @@ export function readHttpMethod(
   record: Record<string, unknown>,
   filePath: string,
   diagnostics: Diagnostic[],
+  pathPrefix?: string,
 ): HttpMethod | undefined {
   const rawMethod = readRequiredString(
     record,
@@ -173,6 +195,7 @@ export function readHttpMethod(
     filePath,
     diagnostics,
     "Request definitions require a string method.",
+    pathPrefix,
   );
   if (!rawMethod) {
     return undefined;
@@ -185,7 +208,7 @@ export function readHttpMethod(
       code: "INVALID_HTTP_METHOD",
       message: `Unsupported HTTP method ${rawMethod}.`,
       filePath,
-      path: "method",
+      path: resolveDiagnosticKeyPath(pathPrefix, "method"),
     });
     return undefined;
   }
@@ -218,6 +241,7 @@ export function readLiteral<TValue extends string>(
   expectedValue: TValue,
   filePath: string,
   diagnostics: Diagnostic[],
+  pathPrefix?: string,
 ): TValue | undefined {
   if (record[key] !== expectedValue) {
     diagnostics.push({
@@ -225,7 +249,7 @@ export function readLiteral<TValue extends string>(
       code: "INVALID_LITERAL",
       message: `${key} must be ${expectedValue}.`,
       filePath,
-      path: key,
+      path: resolveDiagnosticKeyPath(pathPrefix, key),
     });
     return undefined;
   }
@@ -239,15 +263,17 @@ export function readRequiredString(
   filePath: string,
   diagnostics: Diagnostic[],
   message: string,
+  pathPrefix?: string,
 ): string | undefined {
   const value = record[key];
   if (typeof value !== "string") {
+    const typoKey = value === undefined ? findLikelyTypoKey(record, key) : undefined;
     diagnostics.push({
       level: "error",
       code: "INVALID_STRING",
-      message,
+      message: typoKey ? `${message} Found ${typoKey} instead.` : message,
       filePath,
-      path: key,
+      path: resolveDiagnosticKeyPath(pathPrefix, typoKey ?? key),
     });
     return undefined;
   }
@@ -260,6 +286,7 @@ export function readOptionalString(
   key: string,
   filePath: string,
   diagnostics: Diagnostic[],
+  pathPrefix?: string,
 ): string | undefined {
   const value = record[key];
   if (value === undefined) {
@@ -272,7 +299,7 @@ export function readOptionalString(
       code: "INVALID_STRING",
       message: `${key} must be a string when present.`,
       filePath,
-      path: key,
+      path: resolveDiagnosticKeyPath(pathPrefix, key),
     });
     return undefined;
   }
@@ -285,6 +312,7 @@ export function readOptionalBoolean(
   key: string,
   filePath: string,
   diagnostics: Diagnostic[],
+  pathPrefix?: string,
 ): boolean | undefined {
   const value = record[key];
   if (value === undefined) {
@@ -297,7 +325,7 @@ export function readOptionalBoolean(
       code: "INVALID_BOOLEAN",
       message: `${key} must be a boolean when present.`,
       filePath,
-      path: key,
+      path: resolveDiagnosticKeyPath(pathPrefix, key),
     });
     return undefined;
   }
@@ -310,6 +338,7 @@ export function readOptionalNumber(
   key: string,
   filePath: string,
   diagnostics: Diagnostic[],
+  pathPrefix?: string,
 ): number | undefined {
   const value = record[key];
   if (value === undefined) {
@@ -322,7 +351,7 @@ export function readOptionalNumber(
       code: "INVALID_NUMBER",
       message: `${key} must be a number when present.`,
       filePath,
-      path: key,
+      path: resolveDiagnosticKeyPath(pathPrefix, key),
     });
     return undefined;
   }
@@ -360,7 +389,7 @@ export function readFlatVariableMap(
         code: "INVALID_VARIABLE_VALUE",
         message: `${path}.${key} must be a string, number, boolean, or null.`,
         filePath,
-        path: `${path}.${key}`,
+        path: appendDiagnosticPath(path, key),
       });
       return result;
     },
@@ -411,7 +440,7 @@ export function readStringMap(
         code: "INVALID_STRING_MAP_VALUE",
         message: `${path}.${key} must be a string.`,
         filePath,
-        path: `${path}.${key}`,
+        path: appendDiagnosticPath(path, key),
       });
       return result;
     },
@@ -430,6 +459,59 @@ export function readOptionalStringMap(
   }
 
   return readStringMap(value, filePath, diagnostics, path);
+}
+
+function resolveDiagnosticKeyPath(
+  pathPrefix: string | undefined,
+  key: string,
+): string {
+  return pathPrefix ? appendDiagnosticPath(pathPrefix, key) : key;
+}
+
+function findLikelyTypoKey(
+  record: Record<string, unknown>,
+  expectedKey: string,
+): string | undefined {
+  let closestKey: string | undefined;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (const existingKey of Object.keys(record)) {
+    const distance = levenshteinDistance(existingKey, expectedKey);
+    if (distance >= closestDistance) {
+      continue;
+    }
+
+    closestDistance = distance;
+    closestKey = existingKey;
+  }
+
+  return closestDistance <= 2 ? closestKey : undefined;
+}
+
+function levenshteinDistance(left: string, right: string): number {
+  const previousRow = Array.from(
+    { length: right.length + 1 },
+    (_, index) => index,
+  );
+  const currentRow = new Array<number>(right.length + 1);
+
+  for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+    currentRow[0] = leftIndex + 1;
+    for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+      const substitutionCost = left[leftIndex] === right[rightIndex] ? 0 : 1;
+      currentRow[rightIndex + 1] = Math.min(
+        (currentRow[rightIndex] ?? 0) + 1,
+        (previousRow[rightIndex + 1] ?? 0) + 1,
+        (previousRow[rightIndex] ?? 0) + substitutionCost,
+      );
+    }
+
+    for (let index = 0; index < currentRow.length; index += 1) {
+      previousRow[index] = currentRow[index] ?? previousRow[index] ?? 0;
+    }
+  }
+
+  return previousRow[right.length] ?? 0;
 }
 
 export function isFlatVariableValue(
@@ -473,7 +555,7 @@ export function detectSecretLiteralDiagnostics(
       return;
     }
 
-    const joinedPath = pathSegments.join(".");
+    const joinedPath = joinDiagnosticPath(pathSegments);
     const isSecretishField = looksLikeSecretFieldName(lastSegment);
     const isSecretHeaderValue =
       pathSegments.length >= 2 &&
@@ -567,4 +649,25 @@ function getValueAtPath(value: unknown, pathSegments: string[]): unknown {
   }
 
   return currentValue;
+}
+
+function joinDiagnosticPath(pathSegments: string[]): string {
+  let path = "";
+
+  for (const segment of pathSegments) {
+    const normalizedSegment = /^\d+$/.test(segment)
+      ? Number(segment)
+      : segment;
+    if (!path) {
+      path =
+        typeof normalizedSegment === "number"
+          ? `[${normalizedSegment}]`
+          : normalizedSegment;
+      continue;
+    }
+
+    path = appendDiagnosticPath(path, normalizedSegment);
+  }
+
+  return path;
 }

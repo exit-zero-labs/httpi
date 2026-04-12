@@ -2,6 +2,7 @@ import type {
   FlatVariableValue,
   VariableExplanation,
 } from "@exit-zero-labs/httpi-contracts";
+import { appendDiagnosticPath } from "@exit-zero-labs/httpi-contracts";
 import {
   exitCodes,
   HttpiError,
@@ -21,11 +22,17 @@ interface StringValueResolution {
   secretValues: string[];
 }
 
+interface ResolutionDiagnosticLocation {
+  filePath?: string | undefined;
+  path?: string | undefined;
+}
+
 export function resolveStringValue(
   value: string,
   context: RequestResolutionContext,
+  diagnosticLocation?: ResolutionDiagnosticLocation,
 ): StringValueResolution {
-  const resolved = resolveTemplateValue(value, context);
+  const resolved = resolveTemplateValue(value, context, diagnosticLocation);
   return {
     value: String(resolved.value),
     secretValues: resolved.secretValues,
@@ -35,11 +42,13 @@ export function resolveStringValue(
 export function resolveTemplateValue(
   value: string,
   context: RequestResolutionContext,
+  diagnosticLocation?: ResolutionDiagnosticLocation,
 ): TemplateValueResolution {
   if (value.startsWith("$ENV:")) {
     const environmentValue = readProcessEnvValue(
       value.slice("$ENV:".length),
       context,
+      diagnosticLocation,
     );
     return {
       value: environmentValue,
@@ -49,7 +58,12 @@ export function resolveTemplateValue(
 
   const exactToken = matchExactToken(value);
   if (exactToken) {
-    const resolvedValue = requireResolvedToken(exactToken, context, new Set());
+    const resolvedValue = requireResolvedToken(
+      exactToken,
+      context,
+      new Set(),
+      diagnosticLocation,
+    );
     return {
       value: resolvedValue.value,
       secretValues: resolvedValue.secretValues,
@@ -57,20 +71,31 @@ export function resolveTemplateValue(
   }
 
   const interpolation = interpolateTemplate(value, (token) => {
-    const resolvedValue = resolveToken(token, context, new Set());
+    const resolvedValue = resolveToken(
+      token,
+      context,
+      new Set(),
+      diagnosticLocation,
+    );
     if (!resolvedValue) {
       return undefined;
     }
 
     return resolvedValue.value === null ? "null" : String(resolvedValue.value);
   });
-  assertNoUnresolvedTokens(interpolation.unresolved);
+  assertNoUnresolvedTokens(interpolation.unresolved, diagnosticLocation);
 
   return {
     value: interpolation.value,
     secretValues: uniqueSecretValues(
       interpolation.tokens.flatMap(
-        (token) => resolveToken(token, context, new Set())?.secretValues ?? [],
+        (token) =>
+          resolveToken(
+            token,
+            context,
+            new Set(),
+            diagnosticLocation,
+          )?.secretValues ?? [],
       ),
     ),
   };
@@ -95,7 +120,12 @@ export function collectVariableExplanations(
   const explanations = [...keys]
     .sort((left, right) => left.localeCompare(right))
     .map((key) => {
-      const resolved = resolveToken(key, context, new Set());
+      const resolved = resolveToken(
+        key,
+        context,
+        new Set(),
+        getVariableDiagnosticLocation(key, context),
+      );
       return {
         name: key,
         value: resolved?.value,
@@ -123,21 +153,31 @@ function requireResolvedToken(
   token: string,
   context: RequestResolutionContext,
   seenTokens: Set<string>,
+  diagnosticLocation?: ResolutionDiagnosticLocation,
 ): ResolvedScalarValue {
-  const resolvedValue = resolveToken(token, context, seenTokens);
+  const resolvedValue = resolveToken(
+    token,
+    context,
+    seenTokens,
+    diagnosticLocation,
+  );
   if (resolvedValue) {
     return resolvedValue;
   }
 
-  throw new HttpiError("VARIABLE_UNRESOLVED", `Unable to resolve ${token}.`, {
-    exitCode: exitCodes.validationFailure,
-  });
+  throw buildResolutionError(
+    "VARIABLE_UNRESOLVED",
+    `Unable to resolve ${token}.`,
+    diagnosticLocation,
+    "Define the referenced variable or update the template at this location.",
+  );
 }
 
 function resolveToken(
   token: string,
   context: RequestResolutionContext,
   seenTokens: Set<string>,
+  diagnosticLocation?: ResolutionDiagnosticLocation,
 ): ResolvedScalarValue | undefined {
   const trimmedToken = token.trim();
 
@@ -161,10 +201,11 @@ function resolveToken(
   }
 
   if (seenTokens.has(trimmedToken)) {
-    throw new HttpiError(
+    throw buildResolutionError(
       "VARIABLE_CYCLE",
       `Detected a variable cycle while resolving ${trimmedToken}.`,
-      { exitCode: exitCodes.validationFailure },
+      diagnosticLocation,
+      "Break the cycle by removing the self-referential template chain at this location.",
     );
   }
 
@@ -215,6 +256,7 @@ function resolveToken(
       resolveVariableSource(trimmedToken, variableSource.source, context),
       context,
       nextSeenTokens,
+      diagnosticLocation,
     );
   }
 
@@ -265,6 +307,7 @@ function resolveScalarValue(
   source: VariableExplanation["source"],
   context: RequestResolutionContext,
   seenTokens: Set<string>,
+  diagnosticLocation?: ResolutionDiagnosticLocation,
 ): ResolvedScalarValue {
   if (typeof value !== "string") {
     return applyOverrideSecretTaint({
@@ -279,6 +322,7 @@ function resolveScalarValue(
     const environmentValue = readProcessEnvValue(
       value.slice("$ENV:".length),
       context,
+      diagnosticLocation,
     );
     return {
       value: environmentValue,
@@ -291,29 +335,47 @@ function resolveScalarValue(
   const exactToken = matchExactToken(value);
   if (exactToken) {
     return applyOverrideSecretTaint(
-      requireResolvedToken(exactToken, context, seenTokens),
+      requireResolvedToken(
+        exactToken,
+        context,
+        seenTokens,
+        diagnosticLocation,
+      ),
     );
   }
 
   const interpolation = interpolateTemplate(value, (token) => {
-    const resolvedToken = resolveToken(token, context, seenTokens);
+    const resolvedToken = resolveToken(
+      token,
+      context,
+      seenTokens,
+      diagnosticLocation,
+    );
     if (!resolvedToken) {
       return undefined;
     }
 
-    return resolvedToken.value === null ? "null" : String(resolvedToken.value);
+      return resolvedToken.value === null ? "null" : String(resolvedToken.value);
   });
-  assertNoUnresolvedTokens(interpolation.unresolved);
+  assertNoUnresolvedTokens(interpolation.unresolved, diagnosticLocation);
 
   return applyOverrideSecretTaint({
     value: interpolation.value,
     source,
     secret: interpolation.tokens.some(
-      (token) => resolveToken(token, context, seenTokens)?.secret ?? false,
+      (token) =>
+        resolveToken(token, context, seenTokens, diagnosticLocation)?.secret ??
+        false,
     ),
     secretValues: uniqueSecretValues(
       interpolation.tokens.flatMap(
-        (token) => resolveToken(token, context, seenTokens)?.secretValues ?? [],
+        (token) =>
+          resolveToken(
+            token,
+            context,
+            seenTokens,
+            diagnosticLocation,
+          )?.secretValues ?? [],
       ),
     ),
   });
@@ -322,16 +384,18 @@ function resolveScalarValue(
 function readProcessEnvValue(
   environmentName: string,
   context: RequestResolutionContext,
+  diagnosticLocation?: ResolutionDiagnosticLocation,
 ): string {
   const environmentValue = context.processEnv[environmentName];
   if (environmentValue !== undefined) {
     return environmentValue;
   }
 
-  throw new HttpiError(
+  throw buildResolutionError(
     "PROCESS_ENV_MISSING",
     `Environment variable ${environmentName} is required but missing.`,
-    { exitCode: exitCodes.validationFailure },
+    diagnosticLocation,
+    "Set the missing environment variable or replace the $ENV reference at this location.",
   );
 }
 
@@ -339,15 +403,19 @@ function matchExactToken(value: string): string | undefined {
   return value.match(/^\{\{\s*([^{}]+?)\s*\}\}$/)?.[1];
 }
 
-function assertNoUnresolvedTokens(unresolved: string[]): void {
+function assertNoUnresolvedTokens(
+  unresolved: string[],
+  diagnosticLocation?: ResolutionDiagnosticLocation,
+): void {
   if (unresolved.length === 0) {
     return;
   }
 
-  throw new HttpiError(
+  throw buildResolutionError(
     "VARIABLE_UNRESOLVED",
     `Unable to resolve ${unresolved.join(", ")}.`,
-    { exitCode: exitCodes.validationFailure },
+    diagnosticLocation,
+    "Define the referenced variable or update the template at this location.",
   );
 }
 
@@ -363,6 +431,68 @@ function resolveVariableSource(
   return (context.compiled.overrideKeys ?? []).includes(token)
     ? "override"
     : source;
+}
+
+function getVariableDiagnosticLocation(
+  key: string,
+  context: RequestResolutionContext,
+): ResolutionDiagnosticLocation | undefined {
+  if (key in context.step.with) {
+    if (context.compiled.source === "request") {
+      return {
+        filePath: "<input>",
+        path: key,
+      };
+    }
+
+    return {
+      filePath: context.compiled.sourceFilePath,
+      path: appendDiagnosticPath(
+        appendDiagnosticPath(
+          appendDiagnosticPath("steps", context.step.id),
+          "with",
+        ),
+        key,
+      ),
+    };
+  }
+
+  if (key in context.compiled.runInputs) {
+    if ((context.compiled.overrideKeys ?? []).includes(key)) {
+      return {
+        filePath: "<input>",
+        path: key,
+      };
+    }
+
+    return {
+      filePath: context.compiled.sourceFilePath,
+      path: appendDiagnosticPath("inputs", key),
+    };
+  }
+
+  if (key in context.step.request.defaults) {
+    return {
+      filePath: context.step.request.filePath,
+      path: appendDiagnosticPath("defaults", key),
+    };
+  }
+
+  if (key in context.compiled.envValues) {
+    return {
+      filePath: context.compiled.envPath,
+      path: appendDiagnosticPath("values", key),
+    };
+  }
+
+  if (key in context.compiled.configDefaults) {
+    return {
+      filePath: context.compiled.configPath,
+      path: appendDiagnosticPath("defaults", key),
+    };
+  }
+
+  return undefined;
 }
 
 function applyOverrideSecretTaint(
@@ -382,4 +512,33 @@ function applyOverrideSecretTaint(
       serializedValue,
     ]),
   };
+}
+
+function buildResolutionError(
+  code: string,
+  message: string,
+  diagnosticLocation: ResolutionDiagnosticLocation | undefined,
+  hint: string,
+): HttpiError {
+  return new HttpiError(code, message, {
+    exitCode: exitCodes.validationFailure,
+    ...(diagnosticLocation
+      ? {
+          details: [
+            {
+              level: "error" as const,
+              code,
+              message,
+              hint,
+              ...(diagnosticLocation.filePath
+                ? { filePath: diagnosticLocation.filePath }
+                : {}),
+              ...(diagnosticLocation.path
+                ? { path: diagnosticLocation.path }
+                : {}),
+            },
+          ],
+        }
+      : {}),
+  });
 }

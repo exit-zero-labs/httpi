@@ -6,6 +6,7 @@ import type {
   SessionEvent,
   SessionRecord,
   StepArtifactSummary,
+  StreamChunkRecord,
 } from "@exit-zero-labs/httpi-contracts";
 import { schemaVersion } from "@exit-zero-labs/httpi-contracts";
 import {
@@ -41,6 +42,9 @@ export interface StepArtifactWriteInput {
   bodyText?: string | undefined;
   bodyBase64?: string | undefined;
   contentType?: string | undefined;
+  streamChunks?: StreamChunkRecord[] | undefined;
+  streamAssembledText?: string | undefined;
+  streamAssembledJson?: unknown | undefined;
 }
 
 export async function appendSessionEvent(
@@ -173,6 +177,96 @@ export async function writeStepArtifacts(
         relativePath,
         contentType: input.contentType,
       });
+    }
+
+    // Stream chunk artifacts (A1)
+    const hasStreamChunks = input.streamChunks && input.streamChunks.length > 0;
+    const hasStreamAssembled =
+      input.streamAssembledJson !== undefined ||
+      input.streamAssembledText !== undefined;
+    if (hasStreamChunks || hasStreamAssembled) {
+      const streamDir = resolveFromRoot(
+        artifactRoot,
+        "steps",
+        sanitizeFileSegment(input.stepId),
+        `attempt-${input.attempt}`,
+        "stream",
+      );
+      await ensureProjectOwnedDirectory(
+        projectRoot,
+        streamDir,
+        `The stream artifact directory for step ${input.stepId}`,
+      );
+      await chmod(streamDir, runtimeDirectoryMode);
+
+      if (hasStreamChunks) {
+        const chunksRelPath = buildRelativeArtifactPath(
+          input.stepId,
+          input.attempt,
+          "stream/chunks.jsonl",
+        );
+        const chunksAbsPath = resolveFromRoot(artifactRoot, chunksRelPath);
+        const chunksContent = input
+          .streamChunks!.map((c) => JSON.stringify(c))
+          .join("\n");
+        await writeFileAtomic(chunksAbsPath, `${chunksContent}\n`, {
+          mode: runtimeFileMode,
+        });
+        summary.streamChunksPath = chunksRelPath;
+        manifest.entries.push({
+          schemaVersion,
+          sessionId: session.sessionId,
+          stepId: input.stepId,
+          attempt: input.attempt,
+          kind: "stream.chunks",
+          relativePath: chunksRelPath,
+          contentType: "application/x-ndjson",
+        });
+      }
+
+      // Assembled stream body
+      if (
+        input.streamAssembledJson !== undefined ||
+        input.streamAssembledText !== undefined
+      ) {
+        const isJson = input.streamAssembledJson !== undefined;
+        const assembledFileName = isJson
+          ? "stream/assembled.json"
+          : "stream/assembled.txt";
+        const assembledRelPath = buildRelativeArtifactPath(
+          input.stepId,
+          input.attempt,
+          assembledFileName,
+        );
+        const assembledAbsPath = resolveFromRoot(
+          artifactRoot,
+          assembledRelPath,
+        );
+
+        if (isJson) {
+          await writeJsonFileAtomic(
+            assembledAbsPath,
+            input.streamAssembledJson,
+            runtimeFileMode,
+          );
+        } else {
+          await writeFileAtomic(
+            assembledAbsPath,
+            input.streamAssembledText ?? "",
+            { mode: runtimeFileMode },
+          );
+        }
+        summary.streamAssembledPath = assembledRelPath;
+        manifest.entries.push({
+          schemaVersion,
+          sessionId: session.sessionId,
+          stepId: input.stepId,
+          attempt: input.attempt,
+          kind: "stream.assembled",
+          relativePath: assembledRelPath,
+          contentType: isJson ? "application/json" : "text/plain",
+        });
+      }
     }
 
     manifest.entries = sortArtifactManifestEntries(manifest.entries);

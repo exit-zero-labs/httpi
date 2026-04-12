@@ -25,6 +25,14 @@ export function describeCompiledStep(
     };
   }
 
+  if (step.kind === "pollUntil") {
+    return {
+      id: step.id,
+      kind: step.kind,
+      requestId: step.requestStep.requestId,
+    };
+  }
+
   return {
     id: step.id,
     kind: step.kind,

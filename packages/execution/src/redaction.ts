@@ -119,6 +119,20 @@ function redactCompiledStep(
     return step;
   }
 
+  if (step.kind === "pollUntil") {
+    return {
+      ...step,
+      requestStep: {
+        ...step.requestStep,
+        with: redactFlatVariableMap(step.requestStep.with, secretWithKeys),
+        request: {
+          ...step.requestStep.request,
+          defaults: redactFlatVariableMap(step.requestStep.request.defaults),
+        },
+      },
+    };
+  }
+
   return {
     ...step,
     with: redactFlatVariableMap(step.with, secretWithKeys),

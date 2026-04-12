@@ -10,11 +10,7 @@ import {
   redactArtifactText,
   writeStepArtifacts,
 } from "@exit-zero-labs/httpi-runtime";
-import {
-  exitCodes,
-  HttpiError,
-  redactHeaders,
-} from "@exit-zero-labs/httpi-shared";
+import { redactHeaders } from "@exit-zero-labs/httpi-shared";
 
 export async function maybeWriteRequestArtifacts(
   projectRoot: string,
@@ -77,6 +73,20 @@ export async function maybeWriteRequestArtifacts(
     }
   }
 
+  // Stream artifacts — redact chunk previews before writing
+  let streamChunks = exchange.stream?.chunks;
+  let streamAssembledText = exchange.stream?.assembledText;
+  const streamAssembledJson = exchange.stream?.assembledJson;
+  if (streamChunks && secretValues.length > 0) {
+    streamChunks = streamChunks.map((c) => ({
+      ...c,
+      preview: redactArtifactText(c.preview, secretValues),
+    }));
+  }
+  if (streamAssembledText && secretValues.length > 0) {
+    streamAssembledText = redactArtifactText(streamAssembledText, secretValues);
+  }
+
   return writeStepArtifacts(projectRoot, session, {
     stepId: step.id,
     attempt,
@@ -85,34 +95,8 @@ export async function maybeWriteRequestArtifacts(
     bodyText,
     bodyBase64,
     contentType: exchange.response.contentType,
+    streamChunks,
+    streamAssembledText,
+    streamAssembledJson,
   });
-}
-
-export function assertStatusExpectation(
-  step: CompiledRequestStep,
-  exchange: HttpExecutionResult,
-): void {
-  const expectedStatus = step.request.expect.status;
-  if (expectedStatus === undefined) {
-    return;
-  }
-
-  if (typeof expectedStatus === "number") {
-    if (exchange.response.status !== expectedStatus) {
-      throw new HttpiError(
-        "EXPECTATION_FAILED",
-        `Expected status ${expectedStatus} but received ${exchange.response.status}.`,
-        { exitCode: exitCodes.executionFailure },
-      );
-    }
-    return;
-  }
-
-  if (!expectedStatus.includes(exchange.response.status)) {
-    throw new HttpiError(
-      "EXPECTATION_FAILED",
-      `Expected one of ${expectedStatus.join(", ")} but received ${exchange.response.status}.`,
-      { exitCode: exitCodes.executionFailure },
-    );
-  }
 }

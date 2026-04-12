@@ -5,6 +5,7 @@ import type {
   HeaderBlockDefinition,
   ProjectConfig,
 } from "@exit-zero-labs/httpi-contracts";
+import { asRecord } from "@exit-zero-labs/httpi-shared";
 import {
   expectRecord,
   normalizeCapturePolicy,
@@ -95,10 +96,45 @@ export function parseEnvironmentDefinition(
     return { diagnostics };
   }
 
+  // Parse environment guards (D4)
+  let guards: EnvironmentDefinition["guards"];
+  if (record.guards !== undefined) {
+    const guardsRecord = asRecord(record.guards);
+    if (guardsRecord) {
+      guards = {
+        requireEnv:
+          typeof guardsRecord.requireEnv === "string"
+            ? guardsRecord.requireEnv
+            : undefined,
+        requireFlag:
+          typeof guardsRecord.requireFlag === "string"
+            ? guardsRecord.requireFlag
+            : undefined,
+        blockParallelAbove:
+          typeof guardsRecord.blockParallelAbove === "number"
+            ? guardsRecord.blockParallelAbove
+            : undefined,
+        blockIfBranchNotIn:
+          Array.isArray(guardsRecord.blockIfBranchNotIn) &&
+          guardsRecord.blockIfBranchNotIn.every(
+            (s: unknown) => typeof s === "string",
+          )
+            ? guardsRecord.blockIfBranchNotIn
+            : undefined,
+        denyHosts:
+          Array.isArray(guardsRecord.denyHosts) &&
+          guardsRecord.denyHosts.every((s: unknown) => typeof s === "string")
+            ? guardsRecord.denyHosts
+            : undefined,
+      };
+    }
+  }
+
   return {
     value: {
       schemaVersion: parsedSchemaVersion,
       title,
+      guards,
       values,
     },
     diagnostics,

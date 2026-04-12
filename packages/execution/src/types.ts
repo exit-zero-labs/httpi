@@ -1,6 +1,7 @@
 import type {
   CompiledRequestStep,
   CompiledRunSnapshot,
+  EnrichedDiagnostic,
   FlatVariableValue,
   ProjectFiles,
   ResolvedRequestModel,
@@ -53,4 +54,5 @@ export interface ExtractedStepOutputs {
 export interface RequestExecutionOutcome {
   session: SessionRecord;
   success: boolean;
+  diagnostics: EnrichedDiagnostic[];
 }

@@ -1,3 +1,5 @@
+import { sep } from "node:path";
+
 export const schemaVersion = 1 as const;
 export const redactedValue = "[REDACTED]" as const;
 
@@ -23,10 +25,113 @@ export interface Diagnostic {
   level: "error" | "warning";
   code: string;
   message: string;
+  hint?: string | undefined;
+  // Canonical display-safe path surfaced on public interfaces.
+  file?: string | undefined;
+  // Legacy alias retained for compatibility. Enriched diagnostics keep this in sync with `file`.
   filePath?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
   path?: string | undefined;
+}
+
+export function isDiagnostic(value: unknown): value is Diagnostic {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.code === "string" &&
+    typeof candidate.message === "string" &&
+    (candidate.level === "error" || candidate.level === "warning") &&
+    isOptionalString(candidate.hint) &&
+    isOptionalString(candidate.file) &&
+    isOptionalString(candidate.filePath) &&
+    isOptionalNumber(candidate.line) &&
+    isOptionalNumber(candidate.column) &&
+    isOptionalString(candidate.path)
+  );
+}
+
+export interface EnrichedDiagnostic
+  extends Omit<Diagnostic, "hint" | "file" | "filePath" | "line" | "column"> {
+  hint: string;
+  file: string;
+  filePath: string;
+  line: number;
+  column: number;
+}
+
+export function isEnrichedDiagnostic(
+  value: unknown,
+): value is EnrichedDiagnostic {
+  if (!isDiagnostic(value)) {
+    return false;
+  }
+
+  const candidate = value as unknown as Record<string, unknown>;
+  return (
+    typeof candidate.hint === "string" &&
+    typeof candidate.file === "string" &&
+    typeof candidate.filePath === "string" &&
+    typeof candidate.line === "number" &&
+    Number.isFinite(candidate.line) &&
+    typeof candidate.column === "number" &&
+    Number.isFinite(candidate.column)
+  );
+}
+
+export function appendDiagnosticPath(
+  basePath: string,
+  segment: string | number,
+): string {
+  if (!basePath) {
+    if (typeof segment === "number") {
+      return `[${segment}]`;
+    }
+
+    return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(segment)
+      ? segment
+      : `[${JSON.stringify(segment)}]`;
+  }
+
+  if (typeof segment === "number") {
+    return `${basePath}[${segment}]`;
+  }
+
+  if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(segment)) {
+    return `${basePath}.${segment}`;
+  }
+
+  return `${basePath}[${JSON.stringify(segment)}]`;
+}
+
+export function toDisplayDiagnosticFile(filePath: string): string {
+  if (
+    filePath === "<unknown>" ||
+    filePath === "<input>" ||
+    filePath.startsWith("$ENV:")
+  ) {
+    return filePath;
+  }
+
+  const normalizedPath = filePath.split(sep).join("/");
+  if (
+    normalizedPath.startsWith("httpi/") ||
+    normalizedPath.startsWith(".httpi/")
+  ) {
+    return normalizedPath;
+  }
+
+  for (const marker of ["/httpi/", "/.httpi/"]) {
+    const markerIndex = normalizedPath.lastIndexOf(marker);
+    if (markerIndex !== -1) {
+      return normalizedPath.slice(markerIndex + 1);
+    }
+  }
+
+  return "<unknown>";
 }
 
 export interface CapturePolicy {
@@ -37,17 +142,58 @@ export interface CapturePolicy {
   redactHeaders: string[];
 }
 
+// --- Redaction rules (J2) ---
+
+export type RedactPatternKind = "email" | "us-ssn" | "credit-card" | "regex";
+
+export interface RedactPattern {
+  kind: RedactPatternKind;
+  pattern?: string | undefined;
+}
+
+export interface RedactionConfig {
+  redactHeaders?: string[] | undefined;
+  redactJsonPaths?: string[] | undefined;
+  redactPatterns?: RedactPattern[] | undefined;
+}
+
+// --- Mutation gating (E3) ---
+
+export type MutationGatingMode =
+  | "pause-before"
+  | "allow"
+  | "require-explicit-step";
+
+export interface MutationConfirmation {
+  mutating?: MutationGatingMode | undefined;
+  overrides?: Array<{ step: string; allow: boolean }> | undefined;
+}
+
+// --- CI Reporter (F1) ---
+
+export type ReporterFormat = "junit" | "tap" | "github" | "json";
+
 export interface ProjectConfig {
   schemaVersion: typeof schemaVersion;
   project: string;
   defaultEnv?: string | undefined;
   defaults: FlatVariableMap;
   capture: CapturePolicy;
+  redaction?: RedactionConfig | undefined;
+}
+
+export interface EnvironmentGuards {
+  requireEnv?: string | undefined;
+  requireFlag?: string | undefined;
+  blockParallelAbove?: number | undefined;
+  blockIfBranchNotIn?: string[] | undefined;
+  denyHosts?: string[] | undefined;
 }
 
 export interface EnvironmentDefinition {
   schemaVersion: typeof schemaVersion;
   title?: string | undefined;
+  guards?: EnvironmentGuards | undefined;
   values: FlatVariableMap;
 }
 
@@ -74,10 +220,30 @@ export interface HeaderAuthDefinition {
   value: string;
 }
 
+export interface OAuth2ClientCredentialsDefinition {
+  scheme: "oauth2-client-credentials";
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  scope?: string[] | undefined;
+  cacheKey?: string | undefined;
+}
+
+export interface HmacAuthDefinition {
+  scheme: "hmac";
+  algorithm: "sha256" | "sha512";
+  keyId?: string | undefined;
+  secret: string;
+  sign: string;
+  headers?: Record<string, string> | undefined;
+}
+
 export type AuthDefinition =
   | BearerAuthDefinition
   | BasicAuthDefinition
-  | HeaderAuthDefinition;
+  | HeaderAuthDefinition
+  | OAuth2ClientCredentialsDefinition
+  | HmacAuthDefinition;
 
 export interface AuthBlockDefinition {
   schemaVersion?: typeof schemaVersion | undefined;
@@ -100,13 +266,134 @@ export interface BodyTextDefinition {
   contentType?: string | undefined;
 }
 
+// --- Binary/multipart body types (A3) ---
+
+export interface BodyBinaryDefinition {
+  kind: "binary";
+  file: string;
+  contentType?: string | undefined;
+}
+
+export interface MultipartPart {
+  name: string;
+  file?: string | undefined;
+  json?: JsonValue | undefined;
+  text?: string | undefined;
+  contentType?: string | undefined;
+}
+
+export interface BodyMultipartDefinition {
+  kind: "multipart";
+  parts: MultipartPart[];
+}
+
 export type RequestBodyDefinition =
   | BodyFileDefinition
   | BodyJsonDefinition
-  | BodyTextDefinition;
+  | BodyTextDefinition
+  | BodyBinaryDefinition
+  | BodyMultipartDefinition;
+
+// --- Streaming types (A1) ---
+
+export type ResponseMode = "buffered" | "stream" | "binary";
+
+export type StreamParseMode = "sse" | "ndjson" | "chunked-json";
+
+export type StreamCaptureMode = "chunks" | "final" | "both";
+
+export interface StreamConfig {
+  parse: StreamParseMode;
+  capture?: StreamCaptureMode | undefined;
+  maxBytes?: number | undefined;
+}
+
+export interface StreamAssertions {
+  firstChunkWithinMs?: number | undefined;
+  maxInterChunkMs?: number | undefined;
+  minChunks?: number | undefined;
+  finalAssembled?: SchemaAssertionDefinition | undefined;
+}
+
+export interface SchemaAssertionDefinition {
+  kind: "json-schema";
+  schema: string;
+  draft?: string | undefined;
+}
+
+export interface ResponseConfig {
+  mode?: ResponseMode | undefined;
+  stream?: StreamConfig | undefined;
+  // Binary response (A3)
+  saveTo?: string | undefined;
+  maxBytes?: number | undefined;
+}
+
+// --- Assertion types (B1) ---
+
+export interface LatencyMatcher {
+  lt?: number | undefined;
+  lte?: number | undefined;
+  gt?: number | undefined;
+  gte?: number | undefined;
+}
+
+export interface HeaderMatcher {
+  startsWith?: string | undefined;
+  endsWith?: string | undefined;
+  equals?: string | undefined;
+  contains?: string | undefined;
+  matches?: string | undefined;
+  exists?: boolean | undefined;
+}
+
+export interface JsonPathAssertion {
+  path: string;
+  equals?: JsonValue | undefined;
+  length?:
+    | number
+    | { gte?: number; lte?: number; gt?: number; lt?: number }
+    | undefined;
+  matches?: string | undefined;
+  exists?: boolean | undefined;
+  gte?: number | undefined;
+  lte?: number | undefined;
+  gt?: number | undefined;
+  lt?: number | undefined;
+}
+
+export interface BodyExpectation {
+  contentType?: string | undefined;
+  jsonPath?: JsonPathAssertion[] | undefined;
+  contains?: string[] | undefined;
+  not?:
+    | {
+        jsonPath?: JsonPathAssertion[] | undefined;
+        contains?: string[] | undefined;
+      }
+    | undefined;
+  kind?: "json-schema" | "snapshot" | undefined;
+  schema?: string | undefined;
+  draft?: string | undefined;
+  // Snapshot (B3)
+  file?: string | undefined;
+  mask?: Array<{ path: string }> | undefined;
+}
+
+export interface AssertionResult {
+  path: string;
+  matcher: string;
+  expected: JsonValue;
+  actual: JsonValue;
+  passed: boolean;
+}
 
 export interface RequestExpectation {
   status?: number | number[] | undefined;
+  latencyMs?: LatencyMatcher | undefined;
+  headers?: Record<string, HeaderMatcher | string> | undefined;
+  body?: BodyExpectation | undefined;
+  stream?: StreamAssertions | undefined;
 }
 
 export interface ExtractionDefinition {
@@ -120,6 +407,11 @@ export interface RequestUses {
   auth?: string | undefined;
 }
 
+export interface CancelConfig {
+  onRunTimeout?: boolean | undefined;
+  onSignal?: string[] | undefined;
+}
+
 export interface RequestDefinition {
   kind: "request";
   title?: string | undefined;
@@ -130,9 +422,47 @@ export interface RequestDefinition {
   headers?: Record<string, string> | undefined;
   auth?: AuthDefinition | undefined;
   body?: RequestBodyDefinition | undefined;
+  response?: ResponseConfig | undefined;
   expect?: RequestExpectation | undefined;
   extract?: Record<string, ExtractionDefinition> | undefined;
   timeoutMs?: number | undefined;
+  cancel?: CancelConfig | undefined;
+}
+
+// --- Retry types (C1) ---
+
+export type BackoffStrategy = "exponential" | "linear" | "constant";
+export type JitterStrategy = "full" | "equal" | "none";
+
+export interface RetryPolicy {
+  maxAttempts: number;
+  initialDelayMs?: number | undefined;
+  maxDelayMs?: number | undefined;
+  backoff?: BackoffStrategy | undefined;
+  jitter?: JitterStrategy | undefined;
+  retryOn?:
+    | {
+        status?: number[] | undefined;
+        errorClass?: string[] | undefined;
+      }
+    | undefined;
+}
+
+export interface IdempotencyConfig {
+  header: string;
+  value: string;
+}
+
+// --- PollUntil types (C4) ---
+
+export interface PollUntilCondition {
+  jsonPath: string;
+  equals?: JsonValue | undefined;
+  gte?: number | undefined;
+  lte?: number | undefined;
+  gt?: number | undefined;
+  lt?: number | undefined;
+  exists?: boolean | undefined;
 }
 
 export interface RunRequestStepDefinition {
@@ -140,6 +470,21 @@ export interface RunRequestStepDefinition {
   id: string;
   uses: string;
   with?: FlatVariableMap | undefined;
+  retry?: RetryPolicy | undefined;
+  idempotency?: IdempotencyConfig | undefined;
+}
+
+export interface RunPollUntilStepDefinition {
+  kind: "pollUntil";
+  id: string;
+  request: {
+    uses: string;
+    with?: FlatVariableMap | undefined;
+  };
+  until: PollUntilCondition;
+  intervalMs: number;
+  maxAttempts?: number | undefined;
+  timeoutMs?: number | undefined;
 }
 
 export interface RunParallelStepDefinition {
@@ -157,7 +502,8 @@ export interface RunPauseStepDefinition {
 export type RunStepDefinition =
   | RunRequestStepDefinition
   | RunParallelStepDefinition
-  | RunPauseStepDefinition;
+  | RunPauseStepDefinition
+  | RunPollUntilStepDefinition;
 
 export interface RunDefinition {
   kind: "run";
@@ -165,6 +511,21 @@ export interface RunDefinition {
   env?: string | undefined;
   inputs?: FlatVariableMap | undefined;
   steps: RunStepDefinition[];
+  timeoutMs?: number | undefined;
+  defaults?: { timeoutMs?: number | undefined } | undefined;
+  confirmation?: MutationConfirmation | undefined;
+}
+
+// --- Dataset fan-out types (G1) ---
+
+export type DatasetSourceFormat = "jsonl" | "csv" | "yaml";
+
+export interface RunDatasetStepDefinition {
+  kind: "dataset";
+  id: string;
+  source: string;
+  concurrency?: number | undefined;
+  steps: RunRequestStepDefinition[];
 }
 
 export type DefinitionKind =
@@ -200,7 +561,7 @@ export interface ProjectFiles {
   authBlocks: Record<string, AuthBlockFile>;
   requests: Record<string, RequestFile>;
   runs: Record<string, RunFile>;
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }
 
 export interface CompiledHeaderBlock {
@@ -230,9 +591,11 @@ export interface CompiledRequestDefinition {
   auth?: AuthDefinition | undefined;
   authBlock?: CompiledAuthBlock | undefined;
   body?: RequestBodyDefinition | undefined;
+  response?: ResponseConfig | undefined;
   expect: RequestExpectation;
   extract: Record<string, ExtractionDefinition>;
   timeoutMs?: number | undefined;
+  cancel?: CancelConfig | undefined;
 }
 
 export interface CompiledRequestStep {
@@ -241,6 +604,8 @@ export interface CompiledRequestStep {
   requestId: string;
   with: FlatVariableMap;
   request: CompiledRequestDefinition;
+  retry?: RetryPolicy | undefined;
+  idempotency?: IdempotencyConfig | undefined;
 }
 
 export interface CompiledParallelStep {
@@ -255,16 +620,28 @@ export interface CompiledPauseStep {
   reason: string;
 }
 
+export interface CompiledPollUntilStep {
+  kind: "pollUntil";
+  id: string;
+  requestStep: CompiledRequestStep;
+  until: PollUntilCondition;
+  intervalMs: number;
+  maxAttempts: number;
+  timeoutMs?: number | undefined;
+}
+
 export type CompiledRunStep =
   | CompiledRequestStep
   | CompiledParallelStep
-  | CompiledPauseStep;
+  | CompiledPauseStep
+  | CompiledPollUntilStep;
 
 export interface CompiledRunSnapshot {
   schemaVersion: typeof schemaVersion;
   source: "run" | "request";
   runId: string;
   title?: string | undefined;
+  sourceFilePath?: string | undefined;
   envId: string;
   configPath: string;
   configHash: string;
@@ -278,6 +655,7 @@ export interface CompiledRunSnapshot {
   processEnvHashes?: Record<string, string> | undefined;
   definitionHashes: Record<string, string>;
   steps: CompiledRunStep[];
+  envGuards?: EnvironmentGuards | undefined;
   createdAt: string;
 }
 
@@ -297,10 +675,19 @@ export type StepState =
   | "paused"
   | "interrupted";
 
+export interface StreamChunkRecord {
+  seq: number;
+  tOffsetMs: number;
+  bytes: number;
+  preview: string;
+}
+
 export interface StepArtifactSummary {
   requestSummaryPath?: string | undefined;
   responseMetadataPath?: string | undefined;
   bodyPath?: string | undefined;
+  streamChunksPath?: string | undefined;
+  streamAssembledPath?: string | undefined;
 }
 
 export interface StepAttemptRecord {
@@ -366,9 +753,16 @@ export interface ArtifactManifestEntry {
   sessionId: string;
   stepId: string;
   attempt: number;
-  kind: "request.summary" | "response.meta" | "body";
+  kind:
+    | "request.summary"
+    | "response.meta"
+    | "body"
+    | "stream.chunks"
+    | "stream.assembled";
   relativePath: string;
   contentType?: string | undefined;
+  sha256?: string | undefined;
+  size?: number | undefined;
 }
 
 export interface ArtifactManifest {
@@ -392,6 +786,8 @@ export interface ResolvedRequestModel {
   body?: ResolvedRequestBody | undefined;
   timeoutMs: number;
   secretValues: string[];
+  responseMode?: ResponseMode | undefined;
+  streamConfig?: StreamConfig | undefined;
 }
 
 export interface HttpExecutionResult {
@@ -411,6 +807,17 @@ export interface HttpExecutionResult {
     contentType?: string | undefined;
     truncated: boolean;
   };
+  stream?:
+    | {
+        chunks: StreamChunkRecord[];
+        assembledText?: string | undefined;
+        assembledJson?: JsonValue | undefined;
+        firstChunkMs?: number | undefined;
+        maxInterChunkMs?: number | undefined;
+        totalChunks: number;
+        totalBytes: number;
+      }
+    | undefined;
   durationMs: number;
 }
 
@@ -450,7 +857,7 @@ export interface ListDefinitionsResult {
   runs: DefinitionSummary[];
   envs: DefinitionSummary[];
   sessions: SessionSummary[];
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }
 
 export interface DescribeRequestResult {
@@ -458,7 +865,7 @@ export interface DescribeRequestResult {
   envId: string;
   request: ResolvedRequestModel;
   variables: VariableExplanation[];
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }
 
 export interface DescribeRunStep {
@@ -474,17 +881,17 @@ export interface DescribeRunResult {
   envId: string;
   title?: string | undefined;
   steps: DescribeRunStep[];
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }
 
 export interface ExecutionResult {
   session: SessionRecord;
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }
 
 export interface SessionStateResult {
   session: SessionRecord;
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
 }
 
 export interface ArtifactListResult {
@@ -504,5 +911,15 @@ export interface ExplainVariablesResult {
   targetId: string;
   envId: string;
   variables: VariableExplanation[];
-  diagnostics: Diagnostic[];
+  diagnostics: EnrichedDiagnostic[];
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalNumber(value: unknown): value is number | undefined {
+  return (
+    value === undefined || (typeof value === "number" && Number.isFinite(value))
+  );
 }

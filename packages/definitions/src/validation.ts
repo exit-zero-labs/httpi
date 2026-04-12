@@ -4,6 +4,7 @@ import type {
   RunFile,
   RunStepDefinition,
 } from "@exit-zero-labs/httpi-contracts";
+import { appendDiagnosticPath } from "@exit-zero-labs/httpi-contracts";
 import { sanitizeFileSegment } from "@exit-zero-labs/httpi-shared";
 
 export function validateProjectReferences(project: ProjectFiles): Diagnostic[] {
@@ -86,14 +87,16 @@ function validateRunSteps(
   stepIds: Set<string>,
   sanitizedStepIds: Map<string, string>,
 ): void {
-  for (const step of steps) {
+  for (const [index, step] of steps.entries()) {
+    const stepPath = appendDiagnosticPath("steps", index);
+    const stepIdPath = appendDiagnosticPath(stepPath, "id");
     if (stepIds.has(step.id)) {
       diagnostics.push({
         level: "error",
         code: "DUPLICATE_STEP_ID",
         message: `Run ${runFile.id} contains duplicate step id ${step.id}.`,
         filePath: runFile.filePath,
-        path: `steps.${step.id}`,
+        path: stepIdPath,
       });
       continue;
     }
@@ -104,7 +107,7 @@ function validateRunSteps(
       step.id,
       diagnostics,
       sanitizedStepIds,
-      `steps.${step.id}`,
+      stepIdPath,
     );
 
     if (step.kind === "request") {
@@ -114,21 +117,37 @@ function validateRunSteps(
           code: "REQUEST_NOT_FOUND",
           message: `Step ${step.id} references request ${step.uses}, which does not exist.`,
           filePath: runFile.filePath,
-          path: `steps.${step.id}.uses`,
+          path: appendDiagnosticPath(stepPath, "uses"),
+        });
+      }
+      continue;
+    }
+
+    if (step.kind === "pollUntil") {
+      if (!project.requests[step.request.uses]) {
+        diagnostics.push({
+          level: "error",
+          code: "REQUEST_NOT_FOUND",
+          message: `pollUntil step ${step.id} references request ${step.request.uses}, which does not exist.`,
+          filePath: runFile.filePath,
+          path: appendDiagnosticPath(stepPath, "request.uses"),
         });
       }
       continue;
     }
 
     if (step.kind === "parallel") {
-      for (const childStep of step.steps) {
+      const childStepsPath = appendDiagnosticPath(stepPath, "steps");
+      for (const [childIndex, childStep] of step.steps.entries()) {
+        const childStepPath = appendDiagnosticPath(childStepsPath, childIndex);
+        const childStepIdPath = appendDiagnosticPath(childStepPath, "id");
         if (stepIds.has(childStep.id)) {
           diagnostics.push({
             level: "error",
             code: "DUPLICATE_STEP_ID",
             message: `Run ${runFile.id} contains duplicate step id ${childStep.id}.`,
             filePath: runFile.filePath,
-            path: `steps.${step.id}.steps.${childStep.id}`,
+            path: childStepIdPath,
           });
           continue;
         }
@@ -139,7 +158,7 @@ function validateRunSteps(
           childStep.id,
           diagnostics,
           sanitizedStepIds,
-          `steps.${step.id}.steps.${childStep.id}`,
+          childStepIdPath,
         );
         if (!project.requests[childStep.uses]) {
           diagnostics.push({
@@ -147,7 +166,7 @@ function validateRunSteps(
             code: "REQUEST_NOT_FOUND",
             message: `Parallel child step ${childStep.id} references request ${childStep.uses}, which does not exist.`,
             filePath: runFile.filePath,
-            path: `steps.${step.id}.steps.${childStep.id}.uses`,
+            path: appendDiagnosticPath(childStepPath, "uses"),
           });
         }
       }

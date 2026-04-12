@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-import type { FlatVariableMap } from "@exit-zero-labs/httpi-contracts";
+import type {
+  Diagnostic,
+  FlatVariableMap,
+} from "@exit-zero-labs/httpi-contracts";
 import {
   describeRequest,
   describeRun,
@@ -21,7 +24,7 @@ import {
   HttpiError,
 } from "@exit-zero-labs/httpi-shared";
 import packageJson from "../package.json" with { type: "json" };
-import { toCliFailure } from "./error.js";
+import { formatCliDiagnostics, toCliFailure } from "./error.js";
 
 export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   if (
@@ -59,6 +62,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   if (command === "list") {
     const listTarget = parsedArgs.positionals[1];
     const result = await listProjectDefinitions({ projectRoot });
+    writeDiagnostics(result.diagnostics);
 
     if (listTarget === "requests") {
       writeLines(
@@ -97,6 +101,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
 
   if (command === "validate") {
     const result = await validateProject({ projectRoot });
+    writeDiagnostics(result.diagnostics);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.diagnostics.some((diagnostic) => diagnostic.level === "error")
       ? exitCodes.validationFailure
@@ -114,8 +119,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         envId,
         overrides,
       });
+      writeDiagnostics(result.diagnostics);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      return exitCodes.success;
+      return result.diagnostics.some((diagnostic) => diagnostic.level === "error")
+        ? exitCodes.validationFailure
+        : exitCodes.success;
     }
 
     if (runId) {
@@ -124,8 +132,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         envId,
         overrides,
       });
+      writeDiagnostics(result.diagnostics);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      return exitCodes.success;
+      return result.diagnostics.some((diagnostic) => diagnostic.level === "error")
+        ? exitCodes.validationFailure
+        : exitCodes.success;
     }
 
     throw new HttpiError(
@@ -146,6 +157,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         envId,
         overrides,
       });
+      writeDiagnostics(result.diagnostics);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return result.session.state === "failed"
         ? exitCodes.executionFailure
@@ -158,6 +170,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         envId,
         overrides,
       });
+      writeDiagnostics(result.diagnostics);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return result.session.state === "failed"
         ? exitCodes.executionFailure
@@ -182,6 +195,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     }
 
     const result = await resumeSessionRun(sessionId, { projectRoot });
+    writeDiagnostics(result.diagnostics);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.session.state === "failed"
       ? exitCodes.executionFailure
@@ -207,6 +221,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     }
 
     const result = await getSessionState(sessionId, { projectRoot });
+    writeDiagnostics(result.diagnostics);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return exitCodes.success;
   }
@@ -291,8 +306,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       envId,
       overrides,
     });
+    writeDiagnostics(result.diagnostics);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return exitCodes.success;
+    return result.diagnostics.some((diagnostic) => diagnostic.level === "error")
+      ? exitCodes.validationFailure
+      : exitCodes.success;
   }
 
   throw new HttpiError(
@@ -442,6 +460,14 @@ function writeLines(lines: string[]): void {
   }
 
   process.stdout.write(`${lines.join("\n")}\n`);
+}
+
+function writeDiagnostics(diagnostics: Diagnostic[]): void {
+  if (diagnostics.length === 0) {
+    return;
+  }
+
+  process.stderr.write(`${formatCliDiagnostics(diagnostics)}\n`);
 }
 
 async function main(): Promise<void> {
