@@ -36,6 +36,16 @@
     "url": "https://github.com/exit-zero-labs/httpi/issues"
   },
   "homepage": "https://github.com/exit-zero-labs/httpi#readme",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/exit-zero-labs"
+    },
+    {
+      "type": "opencollective",
+      "url": "https://opencollective.com/exit-zero-labs"
+    }
+  ],
   "publishConfig": {
     "access": "public",
     "directory": "publish"

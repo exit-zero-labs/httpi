@@ -29,6 +29,15 @@ When `--project-root` is omitted, the CLI discovers the nearest `httpi/config.ya
 - persists sessions and artifacts under `.httpi/`
 - lets you inspect artifacts and explicitly resume paused or failed runs
 
+## Support
+
+Support development via GitHub Sponsors or Open Collective:
+
+- <https://github.com/sponsors/exit-zero-labs>
+- <https://opencollective.com/exit-zero-labs>
+
+GitHub Sponsors is the primary recurring path. Open Collective is the secondary path for one-time support and public budget visibility. Repo-level support notes live at <https://github.com/exit-zero-labs/httpi/blob/main/docs/support.md>.
+
 ## More docs
 
 - repository overview: <https://github.com/exit-zero-labs/httpi#readme>

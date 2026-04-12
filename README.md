@@ -171,10 +171,20 @@ The core tool set mirrors the CLI flow:
 | Secrets lookup fails | `.httpi/secrets.yaml` is missing or incomplete. | Create or update the local secret alias. |
 | `resume` exits with code `3` | Tracked definitions changed or another process still holds the session lock. | Retry after the lock clears; if definitions drifted, start a fresh run instead of forcing resume. |
 
+## Support
+
+`httpi` is intended to be sustained by donations. GitHub Sponsors is the primary recurring path, and Open Collective is the secondary path for one-time support and public budget visibility:
+
+- <https://github.com/sponsors/exit-zero-labs>
+- <https://opencollective.com/exit-zero-labs>
+
+See [`docs/support.md`](docs/support.md) for what donations fund and how the two support paths differ.
+
 ## Learn more
 
 - [`examples/README.md`](examples/README.md) for the full example catalog
 - [`docs/agent-guide.md`](docs/agent-guide.md) for CLI and MCP validation loops
 - [`docs/product.md`](docs/product.md) for the product framing
+- [`docs/support.md`](docs/support.md) for donation and sustainability notes
 - [`CHANGELOG.md`](CHANGELOG.md) for user-visible release notes
 - [`docs/get-started.md`](docs/get-started.md) for local development, repo layout, and contributor workflows

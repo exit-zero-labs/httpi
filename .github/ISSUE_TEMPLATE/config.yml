@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Support the project
+    url: https://github.com/exit-zero-labs/httpi/blob/main/docs/support.md
+    about: Funding and sustainability notes, including the current GitHub Sponsors path.
   - name: Security disclosure
     url: https://github.com/exit-zero-labs/httpi/blob/main/SECURITY.md
     about: Please use the private security reporting path for vulnerabilities instead of opening a public issue.
