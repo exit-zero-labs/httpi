@@ -1,48 +1,72 @@
 # httpi
 
-`httpi` is a file-based HTTP workflow runner for humans and AI agents. Keep reviewable request intent in `httpi/`, keep runtime evidence in `.httpi/`, and use the same execution model from the CLI or the MCP adapter.
+<p>
+  <a href="https://github.com/exit-zero-labs/httpi/actions/workflows/check.yml"><img alt="Check" src="https://img.shields.io/github/actions/workflow/status/exit-zero-labs/httpi/check.yml?branch=main&label=check&style=flat-square"></a>
+  <a href="https://github.com/exit-zero-labs/httpi/actions/workflows/ci.yml"><img alt="Node compatibility" src="https://img.shields.io/github/actions/workflow/status/exit-zero-labs/httpi/ci.yml?branch=main&label=node%20compatibility&style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@exit-zero-labs/httpi"><img alt="npm CLI version" src="https://img.shields.io/npm/v/%40exit-zero-labs%2Fhttpi?label=cli&style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@exit-zero-labs/httpi-mcp"><img alt="npm MCP version" src="https://img.shields.io/npm/v/%40exit-zero-labs%2Fhttpi-mcp?label=mcp&style=flat-square"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/exit-zero-labs/httpi?style=flat-square"></a>
+</p>
 
-## What it does
+`httpi` is a file-based HTTP workflow runner for repositories. It keeps tracked request intent in `httpi/`, local runtime state in `.httpi/`, and exposes the same execution model through a CLI and an MCP adapter.
 
-- validate request and run definitions before execution
-- compose multi-step workflows with extraction, parallel steps, pause, and resume
-- capture redacted request and response artifacts for inspection
-- expose the same project model to shell users and MCP-compatible tools
+Use it when API validation should live next to the code it exercises, with explicit runs, persisted artifacts, and pause/resume semantics that both humans and AI agents can inspect.
 
 ## Install
 
-| Surface | Package | Command |
+The install surface is intentionally small:
+
+| Package | Surface | Install |
 | --- | --- | --- |
-| CLI | `@exit-zero-labs/httpi` | `npm install -g @exit-zero-labs/httpi` |
-| MCP stdio server | `@exit-zero-labs/httpi-mcp` | `npm install -g @exit-zero-labs/httpi-mcp` |
+| `@exit-zero-labs/httpi` | CLI | `npm install -g @exit-zero-labs/httpi` |
+| `@exit-zero-labs/httpi-mcp` | MCP stdio adapter | `npm install -g @exit-zero-labs/httpi-mcp` |
 
-The shared `packages/*` workspace modules are internal implementation detail packages and are not meant to be installed directly.
-
-## Quick start
+Start with the CLI:
 
 ```bash
 npm install -g @exit-zero-labs/httpi
 mkdir demo-api && cd demo-api
-
 httpi init
+```
+
+To use the same project model from an MCP client:
+
+```bash
+npm install -g @exit-zero-labs/httpi-mcp
+```
+
+## What it solves
+
+| Need | `httpi` |
+| --- | --- |
+| tracked request definitions | plain files under `httpi/` |
+| multi-step API workflows | named runs with sequential, parallel, and pause-aware steps |
+| inspectable execution evidence | persisted, redacted sessions and artifacts under `.httpi/` |
+| one model for humans and agents | the same engine through the CLI and the MCP adapter |
+
+## Quick start
+
+After `init`, the normal first loop is:
+
+```bash
 # edit httpi/env/dev.env.yaml so baseUrl points at your service
 httpi validate
 httpi describe --run smoke
 httpi run --run smoke
 ```
 
-`httpi init` creates a starter project with a `ping` request, a `smoke` run, and schema-aware YAML files. When `--project-root` is omitted, the CLI discovers the nearest `httpi/config.yaml`.
+`httpi init` gives you a small but real starting point: one environment, one request, one run, and schema-aware YAML files.
 
-If your workflow needs local secrets, create `.httpi/secrets.yaml`:
+If the flow needs local secrets, add them under `.httpi/secrets.yaml`:
 
 ```yaml
 devPassword: swordfish
 apiToken: sk_test_123
 ```
 
-Tracked files can reference `{{secrets.alias}}` or `$ENV:NAME`, but literal secrets should stay out of `httpi/`.
+Tracked files can reference `{{secrets.alias}}` or `$ENV:NAME`, but secret literals should stay out of `httpi/`.
 
-If a run pauses or fails, inspect and continue it with:
+When a run pauses or fails, the next move stays explicit:
 
 ```bash
 httpi session show <sessionId>
@@ -50,42 +74,70 @@ httpi artifacts list <sessionId>
 httpi resume <sessionId>
 ```
 
-## Core model
+## Project layout
+
+`httpi` keeps the authored plan and the runtime evidence separate on purpose:
+
+```text
+demo-api/
+├── httpi/
+│   ├── config.yaml
+│   ├── env/
+│   │   └── dev.env.yaml
+│   ├── requests/
+│   │   └── ping.request.yaml
+│   └── runs/
+│       └── smoke.run.yaml
+└── .httpi/
+    ├── secrets.yaml
+    ├── sessions/
+    └── responses/
+```
 
 | Path | Purpose |
 | --- | --- |
 | `httpi/` | Git-tracked requests, runs, envs, blocks, and body templates |
-| `.httpi/` | Local secrets, sessions, locks, and captured artifacts |
+| `.httpi/` | Local secrets, session state, locks, and captured artifacts |
 
-This split keeps authored intent reviewable while still preserving enough runtime evidence to inspect, debug, and safely resume runs.
+In normal projects, `.httpi/` should stay local and untracked. The checked-in examples in this repo include a small `.httpi/` skeleton so the runtime layout is easy to inspect.
 
-## Example projects
+## Operational properties
 
-Public example projects live under [`examples/`](examples/README.md) and are exercised by the automated test suite.
+- **Validate before execution.** Catch schema, wiring, and safety issues before HTTP goes out.
+- **Inspect before you mutate.** Use `describe` and `explain variables` to see what will happen ahead of time.
+- **Pause on purpose.** Stop at meaningful checkpoints, inspect artifacts, then explicitly resume.
+- **Redact by default.** Secret-bearing values stay hidden across CLI output, MCP responses, sessions, and artifact reads.
+- **Resume safely.** `httpi` blocks unsafe resume when tracked definitions or `$ENV` inputs drift.
 
-| Example | Highlights |
+## Examples
+
+Public example projects live under [`examples/`](examples/README.md), and they are exercised by the automated test suite.
+
+| Example | Best for | What it shows |
+| --- | --- | --- |
+| [`examples/getting-started`](examples/getting-started) | first project setup | one env, one request, one run |
+| [`examples/pause-resume`](examples/pause-resume) | understanding the full workflow | login, secret extraction, parallel reads, pause, artifact inspection, and resume |
+| [`examples/api-key-body-file`](examples/api-key-body-file) | richer real-world request wiring | `$ENV` auth, body templates, run inputs, and step output chaining |
+
+These examples are maintained reference projects with automated coverage behind them.
+
+## Core workflow
+
+| Goal | Command |
 | --- | --- |
-| [`examples/getting-started`](examples/getting-started) | smallest runnable project: one env, one request, one run |
-| [`examples/pause-resume`](examples/pause-resume) | login, secret extraction, parallel reads, pause, artifact inspection, and explicit resume |
-| [`examples/api-key-body-file`](examples/api-key-body-file) | `$ENV`-backed header auth, `body.file` templates, run inputs, and step output wiring |
-
-## Command map
-
-| Command | Use when |
-| --- | --- |
-| `init` | scaffold a working project |
-| `list` | discover requests, runs, envs, or sessions |
-| `validate` | catch schema, reference, and safety issues before execution |
-| `describe` | inspect a request or run shape without sending HTTP |
-| `explain variables` | inspect effective values and provenance before execution |
-| `run` | execute one request or an entire run |
-| `session show` | inspect a paused or failed session |
-| `artifacts list` / `artifacts read` | inspect captured request and response artifacts |
-| `resume` | continue a paused or failed session if drift checks pass |
+| scaffold a project | `init` |
+| discover requests, runs, envs, or sessions | `list` |
+| validate before execution | `validate` |
+| inspect a request or run shape | `describe` |
+| inspect resolved values and provenance | `explain variables` |
+| execute a request or run | `run` |
+| inspect a paused or failed session | `session show` |
+| inspect captured request/response evidence | `artifacts list` / `artifacts read` |
+| continue a paused or failed workflow | `resume` |
 
 ## MCP adapter
 
-`httpi-mcp` serves the same project model over stdio.
+`httpi-mcp` exposes the same project model over stdio, so an MCP client can discover definitions, validate, describe, run, inspect artifacts, and resume with the same semantics as the CLI.
 
 ```json
 {
@@ -94,20 +146,18 @@ Public example projects live under [`examples/`](examples/README.md) and are exe
 }
 ```
 
-Core tool parity:
+The core tool set mirrors the CLI flow:
 
-| CLI command | MCP tool |
-| --- | --- |
-| `list` | `list_definitions` |
-| `validate` | `validate_project` |
-| `describe --request <id>` | `describe_request` |
-| `describe --run <id>` | `describe_run` |
-| `run --request <id>` / `run --run <id>` | `run_definition` |
-| `resume <sessionId>` | `resume_session` |
-| `session show <sessionId>` | `get_session_state` |
-| `artifacts list <sessionId>` | `list_artifacts` |
-| `artifacts read <sessionId> <relativePath>` | `read_artifact` |
-| `explain variables ...` | `explain_variables` |
+- `list_definitions`
+- `validate_project`
+- `describe_request`
+- `describe_run`
+- `run_definition`
+- `get_session_state`
+- `list_artifacts`
+- `read_artifact`
+- `explain_variables`
+- `resume_session`
 
 `run_definition` accepts exactly one of `requestId` or `runId`.
 
@@ -118,10 +168,10 @@ Core tool parity:
 | `No httpi/config.yaml found...` | You are outside a project root. | Run `httpi init`, move into the project directory, or pass `--project-root`. |
 | `validate` reports schema or YAML errors | A tracked file has the wrong shape or syntax. | Fix the reported file and rerun `validate`. |
 | Requests cannot connect | `baseUrl` is wrong or the service is not running. | Update `httpi/env/*.env.yaml` and retry. |
-| Secrets lookup fails | `.httpi/secrets.yaml` is missing or incomplete. | Create or update the secret alias locally. |
+| Secrets lookup fails | `.httpi/secrets.yaml` is missing or incomplete. | Create or update the local secret alias. |
 | `resume` exits with code `3` | Tracked definitions changed or another process still holds the session lock. | Retry after the lock clears; if definitions drifted, start a fresh run instead of forcing resume. |
 
-## More docs
+## Learn more
 
 - [`examples/README.md`](examples/README.md) for the full example catalog
 - [`docs/agent-guide.md`](docs/agent-guide.md) for CLI and MCP validation loops
