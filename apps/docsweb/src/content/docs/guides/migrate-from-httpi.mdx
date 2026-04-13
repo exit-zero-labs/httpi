@@ -1,0 +1,86 @@
+---
+title: Migrate from httpi
+description: What the Runmark rename means for existing httpi users right now.
+---
+
+If you already use `httpi`, the move to **Runmark** is mostly a naming update.
+The core model stays the same: file-based requests and runs, local artifacts,
+pause/resume checkpoints, and shared execution across the CLI and MCP.
+
+## Overview
+
+Runmark is the new product name for `httpi`.
+
+The product outgrew a protocol-coded name. The work is not only sending HTTP
+requests. It is defining runs, saving outputs, pausing for inspection, and
+resuming safely from the same repo-native workflow surface.
+
+## What changes today
+
+- narrative and brand language can use **Runmark**
+- the repo now includes a dedicated Runmark draft section
+- transition docs explain the rename scope and staging
+
+## What does not change
+
+- your request and run files
+- the workflow model
+- CLI and MCP behavior
+- session and artifact semantics
+- the current install and command instructions
+
+## Technical identifiers you may still see
+
+The runtime rename has **not** shipped yet, so some identifiers still use
+`httpi`:
+
+- npm package: `@exit-zero-labs/httpi`
+- CLI command: `httpi`
+- repository: `exit-zero-labs/httpi`
+- project folder: `httpi/`
+- docs domain: `httpi.exitzerolabs.com`
+
+Use Runmark in product narrative. Keep `httpi` wherever instructions need to be
+technically exact.
+
+## What to update in your own docs and demos
+
+If you talk about the product publicly, prefer:
+
+- **Runmark** as the product name
+- a short note that current package and command identifiers still use `httpi`
+- examples that keep commands and folder names accurate until the rename lands
+
+Avoid mixed copy that assumes the rename is already complete.
+
+## FAQ
+
+### Is Runmark a new product?
+
+No. Runmark is the new brand direction for the existing `httpi` product.
+
+### Is httpi being discontinued?
+
+No. The workflow model, codebase, and interfaces continue. The change is in
+product identity and later technical naming.
+
+### Do I need to change my request files?
+
+No. Not right now.
+
+### Will the npm package and CLI command change?
+
+That is planned as a separate technical step. Until it actually happens, keep
+using the current identifiers in commands and installs.
+
+### Why do some docs and paths still say httpi?
+
+Because the brand transition is intentionally staged. The repo can adopt
+Runmark direction before the package, CLI, folder, and hosting identifiers are
+renamed.
+
+### Where should I start?
+
+- [Quickstart](/guides/quickstart/) for current install and usage
+- [Runmark brand foundation](/runmark/brand-foundation/) for the new product frame
+- [Runmark rebrand transition](/runmark/rebrand-transition/) for staged rename guidance

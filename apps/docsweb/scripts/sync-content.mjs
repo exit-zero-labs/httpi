@@ -34,6 +34,46 @@ const pages = [
       "What httpi is, who it is for, and how it differs from GUI-first API tooling.",
   },
   {
+    sourcePath: "docs/runmark/brand-foundation.md",
+    outputName: "runmark-brand-foundation.md",
+    slug: "runmark/brand-foundation",
+    title: "Brand foundation",
+    description:
+      "Runmark product narrative, category framing, differentiation, and brand guardrails.",
+  },
+  {
+    sourcePath: "docs/runmark/voice-and-messaging.md",
+    outputName: "runmark-voice-and-messaging.md",
+    slug: "runmark/voice-and-messaging",
+    title: "Voice and messaging",
+    description:
+      "Runmark tone, positioning blocks, hero copy, taglines, and approved phrasing.",
+  },
+  {
+    sourcePath: "docs/runmark/visual-system.md",
+    outputName: "runmark-visual-system.md",
+    slug: "runmark/visual-system",
+    title: "Visual system",
+    description:
+      "Runmark palette, typography, motifs, layout guidance, and visual anti-patterns.",
+  },
+  {
+    sourcePath: "docs/runmark/applications.md",
+    outputName: "runmark-applications.md",
+    slug: "runmark/applications",
+    title: "Applications",
+    description:
+      "How the Runmark draft system should be applied across docs, README, screenshots, and transition surfaces.",
+  },
+  {
+    sourcePath: "docs/runmark/rebrand-transition.md",
+    outputName: "runmark-rebrand-transition.md",
+    slug: "runmark/rebrand-transition",
+    title: "Rebrand transition",
+    description:
+      "Scope, guardrails, and phased rename guidance for moving from httpi to Runmark.",
+  },
+  {
     sourcePath: "docs/architecture.md",
     outputName: "technical-architecture.md",
     slug: "reference/technical-architecture",
