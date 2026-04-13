@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/run.schema.json
+kind: run
+title: Smoke
+env: dev
+steps:
+  - kind: request
+    id: ping
+    uses: ping

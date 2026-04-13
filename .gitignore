@@ -33,9 +33,14 @@ yarn-error.log*
 *.swp
 
 # Runtime state
-.httpi/
-!examples/**/.httpi/
-!examples/**/.httpi/**
+**/httpi/artifacts/*
+!**/httpi/artifacts/.gitkeep
+!**/httpi/artifacts/history/
+!**/httpi/artifacts/sessions/
+**/httpi/artifacts/history/*
+!**/httpi/artifacts/history/.gitkeep
+**/httpi/artifacts/sessions/*
+!**/httpi/artifacts/sessions/.gitkeep
 
 # Misc
 temp/*

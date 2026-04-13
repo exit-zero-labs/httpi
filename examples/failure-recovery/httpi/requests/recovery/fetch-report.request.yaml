@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Fetch report
+method: GET
+url: "{{baseUrl}}/recovery/report"
+expect:
+  status: 200
+extract:
+  reportId:
+    from: $.id
+    required: true

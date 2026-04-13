@@ -1,7 +1,7 @@
 {
   "name": "@exit-zero-labs/httpi-shared",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Shared leaf utilities for httpi.",
   "type": "module",
   "license": "MIT",

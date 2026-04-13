@@ -1,6 +1,6 @@
 /**
  * Public entrypoint for runtime persistence, artifact inspection, and
- * pause/resume safety helpers backed by `.httpi/`.
+ * pause/resume safety helpers backed by `httpi/artifacts/`.
  */
 export type {
   StepArtifactWriteInput,

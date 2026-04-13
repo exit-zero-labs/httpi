@@ -1,7 +1,7 @@
 {
   "name": "@exit-zero-labs/httpi-execution",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Execution orchestration for httpi.",
   "type": "module",
   "license": "MIT",

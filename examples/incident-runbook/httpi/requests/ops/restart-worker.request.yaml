@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Restart worker
+method: POST
+url: "{{baseUrl}}/ops/services/{{serviceId}}/restart"
+auth:
+  scheme: header
+  header: x-ops-key
+  value: $ENV:OPS_API_KEY
+body:
+  json:
+    reason: "restart after deploy {{steps.latest-deploy.latestDeployId}} with {{steps.pending-alerts.alertCount}} alerts open"
+  contentType: application/json
+expect:
+  status: 202
+extract:
+  restartId:
+    from: $.id
+    required: true

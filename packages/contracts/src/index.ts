@@ -136,14 +136,11 @@ export function toDisplayDiagnosticFile(filePath: string): string {
   }
 
   const normalizedPath = filePath.split(sep).join("/");
-  if (
-    normalizedPath.startsWith("httpi/") ||
-    normalizedPath.startsWith(".httpi/")
-  ) {
+  if (normalizedPath.startsWith("httpi/")) {
     return normalizedPath;
   }
 
-  for (const marker of ["/httpi/", "/.httpi/"]) {
+  for (const marker of ["/httpi/"]) {
     const markerIndex = normalizedPath.lastIndexOf(marker);
     if (markerIndex !== -1) {
       return normalizedPath.slice(markerIndex + 1);
@@ -817,7 +814,7 @@ export interface CompiledRunSnapshot {
   createdAt: string;
 }
 
-/** Top-level session states persisted under `.httpi/sessions/`. */
+/** Top-level session states persisted under `httpi/artifacts/sessions/`. */
 export type SessionState =
   | "created"
   | "running"
@@ -843,10 +840,86 @@ export interface StreamChunkRecord {
   preview: string;
 }
 
+/** Redacted request body captured inside the canonical per-attempt request record. */
+export interface RequestArtifactRequestBody {
+  bytes: number;
+  contentType?: string | undefined;
+  text?: string | undefined;
+  base64?: string | undefined;
+}
+
+/** Fully materialized request captured for one attempt. */
+export interface RequestArtifactRequest {
+  method: HttpMethod;
+  url: string;
+  headers: Record<string, string>;
+  bodyBytes: number;
+  timeoutMs: number;
+  responseMode?: ResponseMode | undefined;
+  responseMaxBytes?: number | undefined;
+  saveTo?: string | undefined;
+  streamConfig?: StreamConfig | undefined;
+  body?: RequestArtifactRequestBody | undefined;
+}
+
+/** Recorded response metadata captured for one attempt, even when incomplete. */
+export interface RequestArtifactResponse {
+  received: boolean;
+  status?: number | undefined;
+  statusText?: string | undefined;
+  headers?: Record<string, string> | undefined;
+  bodyText?: string | undefined;
+  bodyBase64?: string | undefined;
+  bodyBytes?: number | undefined;
+  contentType?: string | undefined;
+  truncated?: boolean | undefined;
+}
+
+/** Error metadata captured alongside a failed request attempt. */
+export interface RequestArtifactError {
+  message: string;
+  code?: string | undefined;
+  class?: string | undefined;
+}
+
+/** Canonical per-attempt request artifact written under `history/<sessionId>/`. */
+export interface RequestArtifactRecord {
+  schemaVersion: typeof schemaVersion;
+  sessionId: string;
+  stepId: string;
+  attempt: number;
+  requestId: string;
+  outcome: "success" | "failed";
+  durationMs?: number | undefined;
+  request: RequestArtifactRequest;
+  response: RequestArtifactResponse;
+  error?: RequestArtifactError | undefined;
+  stream?:
+    | {
+        chunks: StreamChunkRecord[];
+        assembledText?: string | undefined;
+        assembledJson?: JsonValue | undefined;
+        assembledLast?: JsonValue | undefined;
+        firstChunkMs?: number | undefined;
+        maxInterChunkMs?: number | undefined;
+        totalChunks: number;
+        totalBytes: number;
+      }
+    | undefined;
+  binary?:
+    | {
+        absolutePath: string;
+        relativePath: string;
+        bytes: number;
+        sha256: string;
+        truncated: boolean;
+      }
+    | undefined;
+}
+
 /** Relative artifact paths recorded for one completed attempt. */
 export interface StepArtifactSummary {
-  requestSummaryPath?: string | undefined;
-  responseMetadataPath?: string | undefined;
+  requestPath?: string | undefined;
   bodyPath?: string | undefined;
   streamChunksPath?: string | undefined;
   streamAssembledPath?: string | undefined;
@@ -929,8 +1002,7 @@ export interface ArtifactManifestEntry {
   stepId: string;
   attempt: number;
   kind:
-    | "request.summary"
-    | "response.meta"
+    | "request"
     | "body"
     | "stream.chunks"
     | "stream.assembled"
@@ -942,7 +1014,7 @@ export interface ArtifactManifestEntry {
   sizeBytes?: number | undefined;
 }
 
-/** Manifest written alongside session artifacts under `.httpi/responses/`. */
+/** Manifest written alongside session artifacts under `httpi/artifacts/history/`. */
 export interface ArtifactManifest {
   schemaVersion: typeof schemaVersion;
   sessionId: string;
@@ -970,7 +1042,7 @@ export interface ResolvedRequestModel {
   streamConfig?: StreamConfig | undefined;
   // Binary response (A3): where to write the downloaded file and the upper
   // byte limit. Paths are relative to the project root and enforced to stay
-  // within `.httpi/` by the executor.
+  // within `httpi/artifacts/` by the executor.
   saveTo?: string | undefined;
   responseMaxBytes?: number | undefined;
 }
@@ -1037,6 +1109,15 @@ export interface HttpExecutionResult {
       }
     | undefined;
   durationMs: number;
+}
+
+/** Captured transport state surfaced when HTTP execution fails mid-attempt. */
+export interface HttpExecutionCapture {
+  request: HttpExecutionResult["request"];
+  response?: HttpExecutionResult["response"] | undefined;
+  stream?: HttpExecutionResult["stream"] | undefined;
+  binary?: HttpExecutionResult["binary"] | undefined;
+  durationMs?: number | undefined;
 }
 
 /** Provenance record for one effective variable value. */

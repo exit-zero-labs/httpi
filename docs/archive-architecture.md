@@ -50,7 +50,7 @@ Everything else is optional power-user or reuse-oriented structure.
 
 1. **Request-first authoring**: request files are the main unit humans and AI agents read and write.
 2. **Runs own orchestration**: sequencing, parallelism, and pause points live in run files, not in separate orchestration concepts.
-3. **Tracked intent, untracked runtime**: `httpi/` defines behavior; `.httpi/` stores local artifacts, sessions, and secrets.
+3. **Tracked intent, untracked runtime**: `httpi/` defines behavior; `httpi/artifacts/` stores local artifacts, sessions, and secrets.
 4. **Optional reuse, not mandatory ceremony**: reusable header/auth blocks and body files exist, but simple requests stay simple.
 5. **Strict typing at every boundary**: files, compiled runtime models, events, artifacts, and interface payloads all have runtime schemas and TypeScript types.
 6. **One engine, many interfaces**: CLI and MCP are adapters over the same execution core.
@@ -81,7 +81,7 @@ Expected flow:
 2. `httpi validate`
 3. `httpi run --run smoke --env dev`
 
-This path should work without creating `blocks/`, `bodies/`, or `.httpi/secrets.yaml`.
+This path should work without creating `blocks/`, `bodies/`, or `httpi/artifacts/secrets.yaml`.
 
 Minimal worked example:
 
@@ -171,7 +171,7 @@ An AI agent should be able to:
 - reusable header and auth blocks
 - run files with `request`, `parallel`, and `pause` step kinds
 - persisted sessions for pause/resume
-- deterministic artifact capture in `.httpi/`
+- deterministic artifact capture in `httpi/artifacts/`
 - one CLI app and one MCP app over shared packages
 - test fixtures and agent-validation docs under `testing/`
 - runtime validation schemas for definitions, sessions, artifacts, events, and interface payloads
@@ -211,13 +211,13 @@ An AI agent should be able to:
                  │                                 │
                  ▼                                 ▼
         tracked project files              untracked runtime state
-              `httpi/`                          `.httpi/`
+              `httpi/`                          `httpi/artifacts/`
 ```
 
 Core idea:
 
 - `httpi/` is the tracked source of truth
-- `.httpi/` is the local execution surface
+- `httpi/artifacts/` is the local execution surface
 - the engine compiles definitions into an execution snapshot
 - CLI and MCP expose the same lifecycle, result, and artifact model
 
@@ -242,7 +242,7 @@ The repository is already scaffolded as a pnpm turborepo. v0 should keep the pac
 - `packages/contracts` defines only public payloads that cross package or interface boundaries
 - `packages/execution` may depend on `definitions`, `http`, `runtime`, `contracts`, and `shared`
 - `packages/http` must not know about CLI or MCP concerns
-- `packages/runtime` owns on-disk formats and locking rules for `.httpi/`
+- `packages/runtime` owns on-disk formats and locking rules for `httpi/artifacts/`
 - `packages/shared` is a leaf-only utility package; domain logic must not accumulate there
 
 ### 7.1 Package ownership matrix
@@ -284,8 +284,8 @@ repo/
 │   ├── bodies/
 │   ├── requests/
 │   └── runs/
-├── .httpi/
-│   ├── responses/
+├── httpi/artifacts/
+│   ├── history/
 │   ├── sessions/
 │   └── secrets.yaml
 └── testing/
@@ -306,9 +306,9 @@ repo/
 | `httpi/bodies/**`                  | Reusable body payload files                        |
 | `httpi/requests/**/*.request.yaml` | Atomic request definitions                         |
 | `httpi/runs/**/*.run.yaml`         | Execution plans                                    |
-| `.httpi/secrets.yaml`              | Local secret aliases, Git-ignored                  |
-| `.httpi/sessions/*.json`           | Persisted session snapshots                        |
-| `.httpi/responses/<sessionId>/...` | Captured runtime artifacts                         |
+| `httpi/artifacts/secrets.yaml`              | Local secret aliases, Git-ignored                  |
+| `httpi/artifacts/sessions/*.json`           | Persisted session snapshots                        |
+| `httpi/artifacts/history/<sessionId>/...` | Captured runtime artifacts                         |
 
 Only `config.yaml`, `env/`, `requests/`, and `runs/` are required in the minimal v0 project. `blocks/` and `bodies/` are optional and only exist when the project needs reuse.
 
@@ -346,7 +346,7 @@ Reference rules:
 
 1. create `httpi/config.yaml`
 2. create `httpi/env/`, `httpi/requests/`, and `httpi/runs/`
-3. add `.httpi/` to `.gitignore`
+3. add `httpi/artifacts/` to `.gitignore`
 4. avoid creating optional directories unless the user asks for examples
 
 `httpi init --example` may create blocks, bodies, and sample flows.
@@ -401,7 +401,7 @@ values:
 
 ### 9.3 Secrets file
 
-`.httpi/secrets.yaml` is optional and local-only.
+`httpi/artifacts/secrets.yaml` is optional and local-only.
 
 Example:
 
@@ -417,8 +417,8 @@ aliases:
 Rules:
 
 - tracked files must not contain secret literals
-- literal local secrets are allowed only in `.httpi/secrets.yaml`
-- `.httpi/secrets.yaml` must be owner-readable only where the OS supports it
+- literal local secrets are allowed only in `httpi/artifacts/secrets.yaml`
+- `httpi/artifacts/secrets.yaml` must be owner-readable only where the OS supports it
 - tracked files may reference secrets via `{{secrets.<alias>}}` or direct `$ENV:NAME`
 
 ### 9.4 Reusable blocks
@@ -634,7 +634,7 @@ Frozen at run start:
 Late-bound at step attempt time:
 
 - direct `$ENV:NAME` reads
-- `.httpi/secrets.yaml` alias resolution
+- `httpi/artifacts/secrets.yaml` alias resolution
 
 This means resume uses the original compiled snapshot for project data, but still resolves secrets at the moment a not-yet-started step executes.
 
@@ -675,7 +675,7 @@ Example:
 }
 ```
 
-Sessions are stored in `.httpi/sessions/<sessionId>.json`.
+Sessions are stored in `httpi/artifacts/sessions/<sessionId>.json`.
 
 ### 10.3 Session state machine
 
@@ -762,12 +762,12 @@ Authoritative precedence summary:
 v0 supports two runtime-only secret sources:
 
 1. direct `$ENV:NAME` references
-2. `.httpi/secrets.yaml` aliases referenced as `{{secrets.aliasName}}`
+2. `httpi/artifacts/secrets.yaml` aliases referenced as `{{secrets.aliasName}}`
 
 Secret rules:
 
 - missing secrets fail execution with a clear error
-- secret-bearing values are redacted from events, session summaries, CLI output, MCP output, and response metadata
+- secret-bearing values are redacted from events, session summaries, CLI output, MCP output, and artifact reads
 - tracked definitions may reference secrets but must not contain secret literals
 
 ## 11. Execution Semantics
@@ -819,9 +819,9 @@ Single-attempt commit sequence:
 execution -> runtime : mark step running (attempt N)
 execution -> http    : send request
 http -> execution    : return response or transport error
-execution -> runtime : write request summary and raw response artifacts
+execution -> runtime : write canonical request artifacts and side artifacts
 execution -> execution : evaluate expectations and extractions
-execution -> runtime : write final response metadata
+execution -> runtime : finalize manifest entries for the attempt
 execution -> runtime : atomically commit terminal step + session state
 ```
 
@@ -887,16 +887,15 @@ Rules:
 
 ### 12.1 Artifact layout
 
-Every executed session writes artifacts under `.httpi/responses/<sessionId>/`.
+Every executed session writes artifacts under `httpi/artifacts/history/<sessionId>/`.
 
 ```text
-.httpi/responses/<sessionId>/
+httpi/artifacts/history/<sessionId>/
 ├── manifest.json
 ├── events.jsonl
 └── steps/
     └── <stepId>/
-        ├── request.summary.json
-        ├── response.meta.json
+        ├── request.json
         └── body.json | body.txt | body.bin
 ```
 
@@ -919,15 +918,15 @@ Every executed session writes artifacts under `.httpi/responses/<sessionId>/`.
 
 Artifact behavior must be explicit:
 
-- request summary is always written for an attempted request
-- response metadata is always written when a response exists
+- canonical request artifacts capture the fully materialized request plus the recorded response or error outcome
 - body capture follows the effective capture policy: `full`, `metadata-only`, or `never`
 - `sensitive: true` requests or steps default to `metadata-only` unless explicitly overridden
 - bodies larger than `maxBodyBytes` are truncated or skipped with size and hash metadata recorded
 - JSON bodies may be pretty-printed when that does not lose information
-- redaction and sensitivity decisions propagate into session summaries, events, CLI output, MCP output, and response metadata
+- request artifacts are still written when a materialized request fails or times out
+- redaction and sensitivity decisions propagate into session summaries, events, CLI output, MCP output, and artifact reads
 
-`response.meta.json` must include at least:
+`request.json` must include at least:
 
 - `sessionId`
 - `runId`
@@ -956,7 +955,7 @@ Initial command surface:
 | Command                            | Purpose                                                 |
 | ---------------------------------- | ------------------------------------------------------- | ---- | --------- | ----------------------------------------- |
 | `httpi init`                       | Scaffold required tracked files and update `.gitignore` |
-| `httpi list requests               | runs                                                    | envs | sessions` | Discover project definitions and sessions |
+| `httpi list requests\|runs\|envs\|sessions` | Discover project definitions and sessions |
 | `httpi validate`                   | Validate definitions and references                     |
 | `httpi describe --request <id>`    | Show the resolved definition shape without executing    |
 | `httpi describe --run <id>`        | Show compiled run structure and step order              |
@@ -1023,11 +1022,11 @@ Security-sensitive behavior is part of v0, not later hardening.
 
 Rules:
 
-- `.httpi/` must be Git-ignored
-- `httpi init` must add `.httpi/` to `.gitignore`
-- `httpi validate` and runtime execution should warn or fail if `.httpi/` is not ignored
+- `httpi/artifacts/` must be Git-ignored
+- `httpi init` must add `httpi/artifacts/` to `.gitignore`
+- `httpi validate` and runtime execution should warn or fail if `httpi/artifacts/` is not ignored
 - tracked files must not contain secret literals in known secret-bearing fields
-- `.httpi/secrets.yaml`, session files, and artifacts should be owner-readable only when supported
+- `httpi/artifacts/secrets.yaml`, session files, and artifacts should be owner-readable only when supported
 - redaction must cover request headers, response headers, extraction results, known sensitive JSON paths, and error strings
 - MCP artifact reads must obey the same redaction and sensitivity policy as CLI output
 
@@ -1145,7 +1144,7 @@ The v0 architecture for `httpi` should stay sharp and boring in the best way:
 - **requests** are the main executable unit
 - **runs** define order, parallelism, and pause points
 - **sessions** make execution resumable and inspectable
-- **`.httpi/`** stores local runtime state and artifacts
+- **`httpi/artifacts/`** stores local runtime state and artifacts
 - **CLI and MCP** share one typed engine and one runtime model
 - **testing/httpi/** holds both executable fixtures and judge-oriented validation assets
 

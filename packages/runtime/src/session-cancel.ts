@@ -18,7 +18,7 @@ import {
  * MCP `cancel_session` write a marker file that the executing run polls at
  * step boundaries and stream read-loop iterations.
  *
- * Layout: `.httpi/sessions/<sessionId>.cancel`
+ * Layout: `httpi/artifacts/sessions/<sessionId>.cancel`
  */
 
 export interface SessionCancelRecord {

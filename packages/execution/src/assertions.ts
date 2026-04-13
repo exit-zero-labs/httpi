@@ -386,7 +386,7 @@ function evaluateHeaderAssertion(
       matcher: "startsWith",
       expected: matcher.startsWith,
       actual: actual ?? null,
-      passed: actual !== undefined && actual.startsWith(matcher.startsWith),
+      passed: actual?.startsWith(matcher.startsWith) ?? false,
     });
   }
   if (matcher.endsWith !== undefined) {
@@ -395,7 +395,7 @@ function evaluateHeaderAssertion(
       matcher: "endsWith",
       expected: matcher.endsWith,
       actual: actual ?? null,
-      passed: actual !== undefined && actual.endsWith(matcher.endsWith),
+      passed: actual?.endsWith(matcher.endsWith) ?? false,
     });
   }
   if (matcher.contains !== undefined) {
@@ -404,7 +404,7 @@ function evaluateHeaderAssertion(
       matcher: "contains",
       expected: matcher.contains,
       actual: actual ?? null,
-      passed: actual !== undefined && actual.includes(matcher.contains),
+      passed: actual?.includes(matcher.contains) ?? false,
     });
   }
   if (matcher.matches !== undefined) {

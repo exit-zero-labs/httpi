@@ -8,7 +8,9 @@ import type {
   AssertionResult,
   CompiledRequestStep,
   EnrichedDiagnostic,
+  HttpExecutionCapture,
   HttpExecutionResult,
+  RequestArtifactError,
   SessionRecord,
   StepArtifactSummary,
 } from "@exit-zero-labs/httpi-contracts";
@@ -17,7 +19,10 @@ import {
   enrichDiagnosticsFromFiles,
   finalizeDiagnostic,
 } from "@exit-zero-labs/httpi-definitions";
-import { executeHttpRequest } from "@exit-zero-labs/httpi-http";
+import {
+  executeHttpRequest,
+  isHttpExecutionError,
+} from "@exit-zero-labs/httpi-http";
 import {
   appendSessionEvent,
   isSessionCancelled,
@@ -213,7 +218,10 @@ export async function executeRequestStep(
       step,
       attempt,
       materialized.request,
-      exchange,
+      {
+        outcome: "success",
+        execution: exchange,
+      },
       uniqueSecretValues([...secretValues, ...extractedSecretValues]),
     );
 
@@ -263,19 +271,24 @@ export async function executeRequestStep(
     };
   } catch (error) {
     const message = coerceErrorMessage(error);
+    const failureCapture = resolveFailureCapture(error, exchange);
     const diagnostics = redactExecutionDiagnostics(
       await resolveExecutionDiagnostics(error),
       secretValues,
     );
 
-    if (materialized && exchange) {
+    if (materialized) {
       artifactSummary = await maybeWriteRequestArtifacts(
         projectRoot,
         nextSession,
         step,
         attempt,
         materialized.request,
-        exchange,
+        {
+          outcome: "failed",
+          execution: failureCapture,
+          error: createRequestArtifactError(error),
+        },
         secretValues,
       );
     }
@@ -283,10 +296,14 @@ export async function executeRequestStep(
     nextSession = finishAttempt(nextSession, step.id, "failed", attempt, {
       outcome: "failed",
       errorMessage: redactArtifactText(message, secretValues),
-      ...(exchange
+      ...(failureCapture?.response?.status !== undefined
         ? {
-            statusCode: exchange.response.status,
-            durationMs: exchange.durationMs,
+            statusCode: failureCapture.response.status,
+          }
+        : {}),
+      ...(failureCapture?.durationMs !== undefined
+        ? {
+            durationMs: failureCapture.durationMs,
           }
         : {}),
       ...(artifactSummary ? { artifacts: artifactSummary } : {}),
@@ -378,7 +395,10 @@ async function assertExpectations(
     return;
   }
 
-  const first = failures[0]!;
+  const [first] = failures;
+  if (!first) {
+    throw new Error("Expected at least one assertion failure.");
+  }
   const message =
     failures.length === 1
       ? `Assertion failed: ${first.path} ${first.matcher} expected ${JSON.stringify(first.expected)} but got ${JSON.stringify(first.actual)}.`
@@ -395,4 +415,27 @@ async function assertExpectations(
       path: `expect.${f.path}`,
     })),
   });
+}
+
+function resolveFailureCapture(
+  error: unknown,
+  exchange: HttpExecutionResult | undefined,
+): HttpExecutionCapture | undefined {
+  if (exchange) {
+    return exchange;
+  }
+
+  if (isHttpExecutionError(error)) {
+    return error.capture;
+  }
+
+  return undefined;
+}
+
+function createRequestArtifactError(error: unknown): RequestArtifactError {
+  return {
+    message: coerceErrorMessage(error),
+    ...(error instanceof HttpiError ? { code: error.code } : {}),
+    ...(error instanceof Error ? { class: error.name } : {}),
+  };
 }

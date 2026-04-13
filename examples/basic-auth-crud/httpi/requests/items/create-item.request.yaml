@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Create item
+method: POST
+url: "{{baseUrl}}/basic/items"
+auth:
+  scheme: basic
+  username: admin
+  password: "{{secrets.adminPassword}}"
+body:
+  json:
+    name: "{{itemName}}"
+    status: draft
+  contentType: application/json
+expect:
+  status: 201
+extract:
+  itemId:
+    from: $.id
+    required: true

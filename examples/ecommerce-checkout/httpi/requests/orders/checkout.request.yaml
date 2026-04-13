@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Checkout cart
+method: POST
+url: "{{baseUrl}}/commerce/carts/{{cartId}}/checkout"
+auth:
+  scheme: header
+  header: x-api-key
+  value: $ENV:COMMERCE_API_TOKEN
+body:
+  file: orders/checkout.json
+  contentType: application/json
+expect:
+  status: 202
+extract:
+  orderId:
+    from: $.order.id
+    required: true

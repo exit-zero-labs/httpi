@@ -41,7 +41,7 @@ pnpm build
 
 1. **Tracked intent vs untracked runtime**
    - `httpi/` is the tracked source of truth
-   - `.httpi/` is local runtime state and must stay Git-ignored
+   - `httpi/artifacts/` is local runtime state and must stay Git-ignored apart from tracked `.gitkeep` placeholders
 
 2. **Thin interface adapter**
    - `apps/cli` stays thin — it ships the `httpi` CLI bin plus the `httpi mcp` stdio MCP server from a single package

@@ -439,7 +439,7 @@ Examples:
 }
 
 // F1: CI reporter. Minimal JSON reporter supported in this slice.
-// Format: --reporter json:./path.json  (shorthand `json` writes to .httpi/reports/run.json)
+// Format: --reporter json:./path.json  (shorthand `json` writes to httpi/artifacts/reports/run.json)
 // Additional formats (junit, tap, github) ship in follow-up work.
 /** Write an optional reporter artifact for CI or automation consumers. */
 async function maybeWriteReporter(
@@ -459,7 +459,7 @@ async function maybeWriteReporter(
   }
   const target = resolvePath(
     process.cwd(),
-    rawPath && rawPath.length > 0 ? rawPath : ".httpi/reports/run.json",
+    rawPath && rawPath.length > 0 ? rawPath : "httpi/artifacts/reports/run.json",
   );
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, `${JSON.stringify(result, null, 2)}\n`, "utf8");

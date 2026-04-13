@@ -908,16 +908,16 @@ function warnIfSaveToEscapesHttpi(
   diagnostics: Diagnostic[],
 ): void {
   if (!saveTo) return;
-  // Normalise both separator conventions up front so a mixed-separator
-  // traversal like "..\\.httpi\\..\\etc\\passwd" on Windows still classifies
-  // via the same OS-agnostic rules.
+  // Normalise both separator conventions up front so mixed-separator traversal
+  // still classifies via the same OS-agnostic rules.
   const normalized = saveTo.replace(/\\/g, "/");
   const segments = normalized.split("/").filter((s) => s.length > 0);
   const isAbsolute =
     normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
   const hasParentTraversal = segments.some((seg) => seg === "..");
   const outsideHttpi =
-    !normalized.startsWith(".httpi/") && !normalized.startsWith("./.httpi/");
+    !normalized.startsWith("httpi/artifacts/") &&
+    !normalized.startsWith("./httpi/artifacts/");
 
   // Security: an absolute path or one that climbs above the project root is
   // a filesystem write primitive (can overwrite arbitrary files). Escalate
@@ -927,20 +927,20 @@ function warnIfSaveToEscapesHttpi(
     diagnostics.push({
       level: "error",
       code: "BINARY_SAVE_TO_UNSAFE_PATH",
-      message: `response.saveTo=${saveTo} would resolve outside the project tree. Use a path inside .httpi/ (recommended) or a project-relative directory.`,
+      message: `response.saveTo=${saveTo} would resolve outside the project tree. Use a path inside httpi/artifacts/ (recommended) or a project-relative directory.`,
       filePath,
       path: "response.saveTo",
     });
     return;
   }
 
-  // Path stays inside the project but outside .httpi/: allowed, warn so the
+  // Path stays inside the project but outside httpi/artifacts/: allowed, warn so the
   // reviewer notices the explicit opt-out of the runtime sandbox.
   if (outsideHttpi) {
     diagnostics.push({
       level: "warning",
       code: "BINARY_SAVE_TO_OUTSIDE_HTTPI",
-      message: `response.saveTo=${saveTo} writes outside .httpi/. This is allowed but bypasses the default runtime sandbox — double-check that the target directory is intended and owned by this project.`,
+      message: `response.saveTo=${saveTo} writes outside httpi/artifacts/. This is allowed but bypasses the default runtime sandbox — double-check that the target directory is intended and owned by this project.`,
       filePath,
       path: "response.saveTo",
     });

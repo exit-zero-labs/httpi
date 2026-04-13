@@ -1,7 +1,7 @@
 {
   "name": "httpi",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "Open-source file-based HTTP workflows for humans and AI agents.",
   "license": "MIT",
   "author": "Exit Zero Labs LLC",

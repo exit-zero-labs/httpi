@@ -61,7 +61,7 @@ The important definitions live in tracked files. Local runtime state lives in a 
 That gives `httpi` a clean split:
 
 - `httpi/` describes **what should happen**
-- `.httpi/` stores **what did happen**
+- `httpi/artifacts/` stores **what did happen**
 
 ### Request-first authoring
 
@@ -86,7 +86,7 @@ The CLI and MCP surfaces should expose the same definitions, the same session mo
 | Concern | GUI-first API client | `httpi` |
 | ------- | -------------------- | ------- |
 | Source of truth | local collection or synced workspace | tracked files in the repo |
-| Runtime state | hidden inside the client or cloud workspace | explicit under `.httpi/` |
+| Runtime state | hidden inside the client or cloud workspace | explicit under `httpi/artifacts/` |
 | Pause and resume | usually manual and ad hoc | explicit run step and resumable session |
 | AI-agent inspection | depends on the client session | same workflow through CLI and MCP |
 | Reviewability | export or screenshot after the fact | diff the request and run files directly |
@@ -140,7 +140,7 @@ In practice, the first useful workflow should include:
 | **Request**     | One HTTP interaction                                                  |
 | **Run**         | A multi-step workflow composed of request, parallel, and pause steps  |
 | **Session**     | The persisted runtime record of one run execution                     |
-| **Artifacts**   | Captured request/response metadata and bodies written under `.httpi/` |
+| **Artifacts**   | Captured request records, responses, and bodies written under `httpi/artifacts/` |
 
 ## 8. Golden-path workflow
 
@@ -202,9 +202,9 @@ The initial version is intentionally focused.
 - importers from Postman, Bruno, or OpenAPI
 - broad retry automation
 
-### 0.1.x stability note
+### 0.3.x stability note
 
-`httpi` is still pre-1.0, but the current 0.1.x line is intended to keep the core tracked file model, CLI/MCP workflow, and pause/resume inspection flow recognizable and stable while adoption and hardening work continues.
+`httpi` is still pre-1.0, but the current 0.3.x line is intended to keep the core tracked file model, CLI/MCP workflow, example-first reference set, and pause/resume inspection flow recognizable and stable while adoption and hardening work continues.
 
 User-visible changes inside that line are tracked in [`../CHANGELOG.md`](../CHANGELOG.md).
 

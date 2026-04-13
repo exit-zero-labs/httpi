@@ -1,5 +1,16 @@
 # @exit-zero-labs/httpi
 
+## 0.3.0
+
+### Minor Changes
+
+- Consolidate runtime state under `httpi/artifacts/`, replace `responses/` with
+  `history/`, and store canonical per-attempt `request.json` artifacts that keep
+  the full sent request plus the recorded response or error outcome.
+- Make `examples/` the only checked-in reference surface, remove the repo-root
+  sample project, and add a broader example catalog covering multi-env smoke,
+  basic-auth CRUD, ecommerce checkout, incident runbooks, and failure recovery.
+
 ## 0.2.0
 
 ### Minor Changes

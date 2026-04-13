@@ -310,7 +310,9 @@ async function executeParallelStep(
         executeRequestStep(projectRoot, runningSession, childStep, false),
       ),
     );
-    for (let i = 0; i < settled.length; i++) childResults[i] = settled[i]!;
+    for (const [index, childResult] of settled.entries()) {
+      childResults[index] = childResult;
+    }
   } else {
     let cursor = 0;
     await Promise.all(
@@ -318,7 +320,10 @@ async function executeParallelStep(
         while (true) {
           const index = cursor++;
           if (index >= step.steps.length) return;
-          const childStep = step.steps[index]!;
+          const childStep = step.steps[index];
+          if (!childStep) {
+            return;
+          }
           childResults[index] = await executeRequestStep(
             projectRoot,
             runningSession,
@@ -669,7 +674,10 @@ function resolveSwitchRef(ref: string, session: SessionRecord): unknown {
   //   steps.<id>.extracted.<name>
   const statusMatch = ref.match(/^steps\.([A-Za-z0-9_-]+)\.response\.status$/);
   if (statusMatch) {
-    const stepId = statusMatch[1]!;
+    const [, stepId] = statusMatch;
+    if (!stepId) {
+      return undefined;
+    }
     const record = session.stepRecords[stepId];
     const lastAttempt = record?.attempts[record.attempts.length - 1];
     return lastAttempt?.statusCode;
@@ -681,8 +689,11 @@ function resolveSwitchRef(ref: string, session: SessionRecord): unknown {
     // Header values live in captured artifacts, not the session record in v1.
     // Resolve via the step's stepOutputs where response headers are extracted
     // to, if any; otherwise return undefined.
-    const stepId = headerMatch[1]!;
-    const headerName = headerMatch[2]!.toLowerCase();
+    const [, stepId, rawHeaderName] = headerMatch;
+    if (!stepId || !rawHeaderName) {
+      return undefined;
+    }
+    const headerName = rawHeaderName.toLowerCase();
     const output = session.stepOutputs[stepId] ?? {};
     return output[`response.headers.${headerName}`];
   }
@@ -690,8 +701,10 @@ function resolveSwitchRef(ref: string, session: SessionRecord): unknown {
     /^steps\.([A-Za-z0-9_-]+)\.extracted\.([A-Za-z0-9_-]+)$/,
   );
   if (extractedMatch) {
-    const stepId = extractedMatch[1]!;
-    const name = extractedMatch[2]!;
+    const [, stepId, name] = extractedMatch;
+    if (!stepId || !name) {
+      return undefined;
+    }
     const output = session.stepOutputs[stepId] ?? {};
     return output[name];
   }

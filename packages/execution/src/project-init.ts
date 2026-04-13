@@ -16,6 +16,18 @@ import type { InitProjectResult } from "./types.js";
 
 const schemaBaseUrl =
   "https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas";
+const runtimeGitignoreSentinel = `${runtimeDirectoryName}/*`;
+const runtimeGitignoreBlockLines = [
+  "# httpi runtime state",
+  runtimeGitignoreSentinel,
+  `!${runtimeDirectoryName}/.gitkeep`,
+  `!${runtimeDirectoryName}/history/`,
+  `!${runtimeDirectoryName}/sessions/`,
+  `${runtimeDirectoryName}/history/*`,
+  `!${runtimeDirectoryName}/history/.gitkeep`,
+  `${runtimeDirectoryName}/sessions/*`,
+  `!${runtimeDirectoryName}/sessions/.gitkeep`,
+];
 
 function schemaComment(schemaFileName: string): string {
   return `# yaml-language-server: $schema=${schemaBaseUrl}/${schemaFileName}`;
@@ -26,6 +38,7 @@ export async function initProject(
 ): Promise<InitProjectResult> {
   const rootDir = resolve(targetDirectory);
   const trackedRoot = resolveFromRoot(rootDir, trackedDirectoryName);
+  const runtimeRoot = resolveFromRoot(trackedRoot, "artifacts");
   const gitignorePath = resolveFromRoot(rootDir, ".gitignore");
   const createdPaths: string[] = [];
 
@@ -70,6 +83,23 @@ export async function initProject(
     "The tracked httpi/bodies directory",
   );
   await ensureRuntimePaths(rootDir);
+  createdPaths.push(
+    ...(await writeTemplateIfMissing(
+      rootDir,
+      resolveFromRoot(runtimeRoot, ".gitkeep"),
+      "",
+    )),
+    ...(await writeTemplateIfMissing(
+      rootDir,
+      resolveFromRoot(runtimeRoot, "history", ".gitkeep"),
+      "",
+    )),
+    ...(await writeTemplateIfMissing(
+      rootDir,
+      resolveFromRoot(runtimeRoot, "sessions", ".gitkeep"),
+      "",
+    )),
+  );
 
   createdPaths.push(
     ...(await writeTemplateIfMissing(
@@ -146,14 +176,14 @@ export async function initProject(
   );
 
   if (!hasGitignore) {
-    await writeUtf8File(gitignorePath, `${runtimeDirectoryName}/\n`);
+    await writeUtf8File(gitignorePath, `${buildRuntimeGitignoreBlock()}\n`);
     createdPaths.push(gitignorePath);
   } else {
     const currentGitignore = await readUtf8File(gitignorePath);
-    if (!currentGitignore.includes(`${runtimeDirectoryName}/`)) {
+    if (!currentGitignore.includes(runtimeGitignoreSentinel)) {
       const nextContent = currentGitignore.endsWith("\n")
-        ? `${currentGitignore}${runtimeDirectoryName}/\n`
-        : `${currentGitignore}\n${runtimeDirectoryName}/\n`;
+        ? `${currentGitignore}${buildRuntimeGitignoreBlock()}\n`
+        : `${currentGitignore}\n${buildRuntimeGitignoreBlock()}\n`;
       await writeUtf8File(gitignorePath, nextContent);
     }
   }
@@ -181,6 +211,10 @@ async function writeTemplateIfMissing(
 
   await writeUtf8File(filePath, content);
   return [filePath];
+}
+
+function buildRuntimeGitignoreBlock(): string {
+  return runtimeGitignoreBlockLines.join("\n");
 }
 
 async function ensureProjectOwnedDirectory(

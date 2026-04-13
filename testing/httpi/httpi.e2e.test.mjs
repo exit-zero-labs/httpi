@@ -93,8 +93,9 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
     const sessionId = pausedExecution.session.sessionId;
     const manifestPath = join(
       projectRoot,
-      ".httpi",
-      "responses",
+      "httpi",
+      "artifacts",
+      "history",
       sessionId,
       "manifest.json",
     );
@@ -102,25 +103,27 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
     assert(manifest.entries.some((entry) => entry.stepId === "get-user"));
     assert(manifest.entries.some((entry) => entry.stepId === "list-orders"));
 
-    const requestSummaryPath = join(
+    const requestArtifactPath = join(
       projectRoot,
-      ".httpi",
-      "responses",
+      "httpi",
+      "artifacts",
+      "history",
       sessionId,
       "steps",
       "get-user",
       "attempt-1",
-      "request.summary.json",
+      "request.json",
     );
-    const requestSummary = JSON.parse(
-      await readFile(requestSummaryPath, "utf8"),
+    const requestArtifact = JSON.parse(
+      await readFile(requestArtifactPath, "utf8"),
     );
-    assert.equal(requestSummary.headers.authorization, "[REDACTED]");
+    assert.equal(requestArtifact.request.headers.authorization, "[REDACTED]");
 
     const loginBodyPath = join(
       projectRoot,
-      ".httpi",
-      "responses",
+      "httpi",
+      "artifacts",
+      "history",
       sessionId,
       "steps",
       "login",
@@ -160,8 +163,7 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
     const listedArtifacts = JSON.parse(artifactsList.stdout);
     assert(
       listedArtifacts.artifacts.some(
-        (entry) =>
-          entry.stepId === "get-user" && entry.kind === "request.summary",
+        (entry) => entry.stepId === "get-user" && entry.kind === "request",
       ),
     );
 
@@ -206,13 +208,19 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
 
     if (process.platform !== "win32") {
       const sessionStat = await stat(
-        join(projectRoot, ".httpi", "sessions", `${sessionId}.json`),
+        join(
+          projectRoot,
+          "httpi",
+          "artifacts",
+          "sessions",
+          `${sessionId}.json`,
+        ),
       );
-      const responseDirStat = await stat(
-        join(projectRoot, ".httpi", "responses", sessionId),
+      const requestDirStat = await stat(
+        join(projectRoot, "httpi", "artifacts", "history", sessionId),
       );
       assert.equal(sessionStat.mode & 0o077, 0);
-      assert.equal(responseDirStat.mode & 0o077, 0);
+      assert.equal(requestDirStat.mode & 0o077, 0);
     }
   } finally {
     server.close();
@@ -686,8 +694,9 @@ test("CLI list, request execution, step-scoped artifacts, and event logs stay us
     const eventLog = await readFile(
       join(
         projectRoot,
-        ".httpi",
-        "responses",
+        "httpi",
+        "artifacts",
+        "history",
         pausedExecution.session.sessionId,
         "events.jsonl",
       ),
@@ -1733,10 +1742,10 @@ test("CLI rejects secrets file symlinks", async () => {
   const projectRoot = await createFixtureProject("http://127.0.0.1:1");
 
   try {
-    await rm(join(projectRoot, ".httpi", "secrets.yaml"));
+    await rm(join(projectRoot, "httpi", "artifacts", "secrets.yaml"));
     await symlink(
       join(projectRoot, "httpi", "env", "dev.env.yaml"),
-      join(projectRoot, ".httpi", "secrets.yaml"),
+      join(projectRoot, "httpi", "artifacts", "secrets.yaml"),
     );
 
     const runResult = await runNodeProcess(process.execPath, [
@@ -1819,23 +1828,27 @@ test("CLI redacts direct overrides in describe output and request artifacts", as
     const execution = JSON.parse(runResult.stdout);
     assert.equal(execution.session.compiled.runInputs.credential, "[REDACTED]");
 
-    const requestSummary = JSON.parse(
+    const requestArtifact = JSON.parse(
       await readFile(
         join(
           projectRoot,
-          ".httpi",
-          "responses",
+          "httpi",
+          "artifacts",
+          "history",
           execution.session.sessionId,
           "steps",
           "request",
           "attempt-1",
-          "request.summary.json",
+          "request.json",
         ),
         "utf8",
       ),
     );
-    assert.equal(requestSummary.headers["x-test-credential"], "[REDACTED]");
-    assert.doesNotMatch(JSON.stringify(requestSummary), /topsecret/);
+    assert.equal(
+      requestArtifact.request.headers["x-test-credential"],
+      "[REDACTED]",
+    );
+    assert.doesNotMatch(JSON.stringify(requestArtifact), /topsecret/);
 
     const sessionShow = await runNodeProcess(process.execPath, [
       cliEntrypoint,
@@ -2002,8 +2015,7 @@ test("MCP exposes the documented core tools over stdio", async () => {
     const listedArtifacts = JSON.parse(artifacts.content[0].text);
     assert(
       listedArtifacts.artifacts.some(
-        (entry) =>
-          entry.stepId === "get-user" && entry.kind === "request.summary",
+        (entry) => entry.stepId === "get-user" && entry.kind === "request",
       ),
     );
 
@@ -2155,8 +2167,9 @@ test("CLI preserves secret-taint through parallel extraction and resume", async 
     const rotateBody = await readFile(
       join(
         projectRoot,
-        ".httpi",
-        "responses",
+        "httpi",
+        "artifacts",
+        "history",
         sessionId,
         "steps",
         "rotate-session",
@@ -2459,31 +2472,30 @@ test("CLI captures truncated binary response artifacts", async () => {
     ]);
     assert.equal(artifactsList.code, 0, artifactsList.stderr);
     const listedArtifacts = JSON.parse(artifactsList.stdout);
-    const responseMetadataArtifact = listedArtifacts.artifacts.find(
-      (artifact) =>
-        artifact.stepId === "request" && artifact.kind === "response.meta",
+    const requestArtifact = listedArtifacts.artifacts.find(
+      (artifact) => artifact.stepId === "request" && artifact.kind === "request",
     );
     const bodyArtifact = listedArtifacts.artifacts.find(
       (artifact) => artifact.stepId === "request" && artifact.kind === "body",
     );
-    assert(responseMetadataArtifact);
+    assert(requestArtifact);
     assert(bodyArtifact);
     assert.equal(bodyArtifact.relativePath, "steps/request/attempt-1/body.bin");
 
-    const responseMetadataResult = await runNodeProcess(process.execPath, [
+    const requestArtifactResult = await runNodeProcess(process.execPath, [
       cliEntrypoint,
       "artifacts",
       "read",
       sessionId,
-      responseMetadataArtifact.relativePath,
+      requestArtifact.relativePath,
       "--project-root",
       projectRoot,
     ]);
-    assert.equal(responseMetadataResult.code, 0, responseMetadataResult.stderr);
-    const responseMetadata = JSON.parse(responseMetadataResult.stdout);
-    assert.equal(responseMetadata.status, 200);
-    assert.equal(responseMetadata.bodyBytes, 8);
-    assert.equal(responseMetadata.truncated, true);
+    assert.equal(requestArtifactResult.code, 0, requestArtifactResult.stderr);
+    const binaryRequestArtifact = JSON.parse(requestArtifactResult.stdout);
+    assert.equal(binaryRequestArtifact.response.status, 200);
+    assert.equal(binaryRequestArtifact.response.bodyBytes, 8);
+    assert.equal(binaryRequestArtifact.response.truncated, true);
 
     const bodyResult = await runNodeProcess(process.execPath, [
       cliEntrypoint,
@@ -2543,6 +2555,25 @@ test("CLI surfaces timeout failures for slow requests", async () => {
       failedExecution.session.stepRecords.request.attempts[0].errorMessage,
       /HTTP request failed:/,
     );
+    const timeoutRequestArtifact = JSON.parse(
+      await readFile(
+        join(
+          projectRoot,
+          "httpi",
+          "artifacts",
+          "history",
+          failedExecution.session.sessionId,
+          "steps",
+          "request",
+          "attempt-1",
+          "request.json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.equal(timeoutRequestArtifact.request.url, `${baseUrl}/slow`);
+    assert.equal(timeoutRequestArtifact.response.received, false);
+    assert.equal(timeoutRequestArtifact.error.code, "HTTP_REQUEST_FAILED");
   } finally {
     server.close();
     await rm(projectRoot, { recursive: true, force: true });
@@ -2742,8 +2773,9 @@ test("CLI merges parallel child failures into parent session state", async () =>
     const eventLog = await readFile(
       join(
         projectRoot,
-        ".httpi",
-        "responses",
+        "httpi",
+        "artifacts",
+        "history",
         failedExecution.session.sessionId,
         "events.jsonl",
       ),
@@ -2834,9 +2866,9 @@ async function createFixtureProject(baseUrl) {
     `schemaVersion: 1\ntitle: Development\nvalues:\n  baseUrl: ${baseUrl}\n`,
     "utf8",
   );
-  await mkdir(join(projectRoot, ".httpi"), { recursive: true });
+  await mkdir(join(projectRoot, "httpi", "artifacts"), { recursive: true });
   await writeFile(
-    join(projectRoot, ".httpi", "secrets.yaml"),
+    join(projectRoot, "httpi", "artifacts", "secrets.yaml"),
     "devPassword: swordfish\n",
     {
       encoding: "utf8",

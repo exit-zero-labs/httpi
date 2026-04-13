@@ -21,7 +21,7 @@ export async function loadSecrets(
   if (secretsStats.isSymbolicLink()) {
     throw new HttpiError(
       "SECRETS_PATH_INVALID",
-      "The local .httpi/secrets.yaml file must not resolve through a symlink.",
+      "The local httpi/artifacts/secrets.yaml file must not resolve through a symlink.",
       { exitCode: exitCodes.validationFailure },
     );
   }
@@ -29,7 +29,8 @@ export async function loadSecrets(
   const resolvedSecretsPath = await realpath(runtimePaths.secretsPath);
   assertPathWithin(resolvedRuntimeDir, resolvedSecretsPath, {
     code: "SECRETS_PATH_INVALID",
-    message: "The local .httpi/secrets.yaml file must stay within .httpi/.",
+    message:
+      "The local httpi/artifacts/secrets.yaml file must stay within httpi/artifacts/.",
     exitCode: exitCodes.validationFailure,
   });
   if (process.platform !== "win32") {
@@ -41,7 +42,7 @@ export async function loadSecrets(
   if (document.errors.length > 0) {
     throw new HttpiError(
       "SECRETS_INVALID",
-      "The local .httpi/secrets.yaml file could not be parsed.",
+      "The local httpi/artifacts/secrets.yaml file could not be parsed.",
       {
         exitCode: exitCodes.validationFailure,
         details: document.errors.map((error) => error.message),
@@ -57,7 +58,7 @@ export async function loadSecrets(
   if (!valuesRecord) {
     throw new HttpiError(
       "SECRETS_INVALID",
-      "The local .httpi/secrets.yaml file must be a string map or contain a values string map.",
+      "The local httpi/artifacts/secrets.yaml file must be a string map or contain a values string map.",
       {
         exitCode: exitCodes.validationFailure,
       },

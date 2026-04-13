@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/config.schema.json
+schemaVersion: 1
+project: basic-auth-crud
+defaultEnv: dev
+
+defaults:
+  timeoutMs: 5000
+
+capture:
+  requestSummary: true
+  responseMetadata: true
+  responseBody: full
+  redactHeaders:
+    - authorization

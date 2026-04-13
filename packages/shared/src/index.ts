@@ -12,7 +12,7 @@ import {
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export const trackedDirectoryName = "httpi";
-export const runtimeDirectoryName = ".httpi";
+export const runtimeDirectoryName = "httpi/artifacts";
 export const requestFileSuffix = ".request.yaml";
 export const runFileSuffix = ".run.yaml";
 export const envFileSuffix = ".env.yaml";

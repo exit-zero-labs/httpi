@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Update item
+method: PATCH
+url: "{{baseUrl}}/basic/items/{{itemId}}"
+auth:
+  scheme: basic
+  username: admin
+  password: "{{secrets.adminPassword}}"
+body:
+  json:
+    status: "{{nextStatus}}"
+  contentType: application/json
+expect:
+  status: 200

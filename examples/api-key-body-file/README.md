@@ -9,7 +9,7 @@ This example shows a slightly richer request flow with:
 - run inputs flowing into the body template
 - extracted step outputs feeding a follow-up request
 
-The checked-in `.httpi/` directory is only there to show the runtime layout. Real projects should usually keep `.httpi/` untracked.
+The checked-in `httpi/artifacts/` directory is only there to show the runtime layout. Real projects should usually keep `httpi/artifacts/` Git-ignored apart from the tracked `.gitkeep` placeholders.
 
 ## Setup
 

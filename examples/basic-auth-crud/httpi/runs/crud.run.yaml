@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/run.schema.json
+kind: run
+title: CRUD
+env: dev
+inputs:
+  itemName: widget-basic
+  nextStatus: active
+steps:
+  - kind: request
+    id: create-item
+    uses: items/create-item
+
+  - kind: request
+    id: read-item
+    uses: items/get-item
+    with:
+      itemId: "{{steps.create-item.itemId}}"
+
+  - kind: request
+    id: update-item
+    uses: items/update-item
+    with:
+      itemId: "{{steps.create-item.itemId}}"
+
+  - kind: request
+    id: verify-item
+    uses: items/get-item
+    with:
+      itemId: "{{steps.create-item.itemId}}"

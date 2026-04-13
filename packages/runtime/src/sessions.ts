@@ -1,5 +1,5 @@
 /**
- * Session persistence for `.httpi/sessions/*.json`.
+ * Session persistence for `httpi/artifacts/sessions/*.json`.
  *
  * Sessions are the durable execution ledger for pause/resume, inspection, and
  * safety checks. This file owns their creation, validation, and atomic writes.
@@ -86,7 +86,7 @@ export function createSessionRecord(
     dirname(dirname(compiled.configPath)),
     runtimeDirectoryName,
   );
-  const responsesDir = resolveFromRoot(runtimeRoot, "responses", sessionId);
+  const historyDir = resolveFromRoot(runtimeRoot, "history", sessionId);
 
   return {
     schemaVersion,
@@ -99,14 +99,14 @@ export function createSessionRecord(
     compiled,
     stepRecords,
     stepOutputs: {},
-    artifactManifestPath: resolveFromRoot(responsesDir, "manifest.json"),
-    eventLogPath: resolveFromRoot(responsesDir, "events.jsonl"),
+    artifactManifestPath: resolveFromRoot(historyDir, "manifest.json"),
+    eventLogPath: resolveFromRoot(historyDir, "events.jsonl"),
     createdAt,
     updatedAt: createdAt,
   };
 }
 
-/** Persist a complete session record atomically under `.httpi/sessions/`. */
+/** Persist a complete session record atomically under `httpi/artifacts/sessions/`. */
 export async function writeSession(
   projectRoot: string,
   session: SessionRecord,

@@ -233,8 +233,8 @@ test("session output redaction honors secret output metadata", () => {
         userName: "Ada",
       },
     },
-    artifactManifestPath: "/tmp/.httpi/responses/run_123/manifest.json",
-    eventLogPath: "/tmp/.httpi/responses/run_123/events.jsonl",
+    artifactManifestPath: "/tmp/httpi/artifacts/history/run_123/manifest.json",
+    eventLogPath: "/tmp/httpi/artifacts/history/run_123/events.jsonl",
     createdAt: "2026-04-11T00:00:00.000Z",
     updatedAt: "2026-04-11T00:00:00.000Z",
   });
@@ -299,7 +299,7 @@ test("runtime session locks reject concurrent access", async () => {
   }
 });
 
-test("runtime paths reject symlinked .httpi roots", async () => {
+test("runtime paths reject symlinked httpi/artifacts roots", async () => {
   if (process.platform === "win32") {
     return;
   }
@@ -309,7 +309,8 @@ test("runtime paths reject symlinked .httpi roots", async () => {
   try {
     const redirectedRuntimeDir = join(projectRoot, "redirected-runtime");
     await mkdir(redirectedRuntimeDir, { recursive: true });
-    await symlink(redirectedRuntimeDir, join(projectRoot, ".httpi"));
+    await mkdir(join(projectRoot, "httpi"), { recursive: true });
+    await symlink(redirectedRuntimeDir, join(projectRoot, "httpi", "artifacts"));
 
     await assert.rejects(
       async () => {
@@ -389,7 +390,7 @@ test("runtime artifact roots reject symlinked session directories", async () => 
     await mkdir(redirectedArtifactRoot, { recursive: true });
     await symlink(
       redirectedArtifactRoot,
-      join(runtimePaths.responsesDir, session.sessionId),
+      join(runtimePaths.historyDir, session.sessionId),
     );
 
     await assert.rejects(
@@ -397,10 +398,23 @@ test("runtime artifact roots reject symlinked session directories", async () => 
         await writeStepArtifacts(projectRoot, session, {
           stepId: "ping",
           attempt: 1,
-          requestSummary: {
-            method: "GET",
-            url: "https://example.test/ping",
-            headers: {},
+          request: {
+            schemaVersion: 1,
+            sessionId: session.sessionId,
+            stepId: "ping",
+            attempt: 1,
+            requestId: "ping",
+            outcome: "success",
+            request: {
+              method: "GET",
+              url: "https://example.test/ping",
+              headers: {},
+              bodyBytes: 0,
+              timeoutMs: 1000,
+            },
+            response: {
+              received: false,
+            },
           },
         });
       },
@@ -534,15 +548,15 @@ test("runtime event logs reject symlinked leaf files", async () => {
     );
 
     const runtimePaths = await ensureRuntimePaths(projectRoot);
-    const sessionResponsesDir = join(
-      runtimePaths.responsesDir,
+    const sessionRequestsDir = join(
+      runtimePaths.historyDir,
       session.sessionId,
     );
-    await mkdir(sessionResponsesDir, { recursive: true });
+    await mkdir(sessionRequestsDir, { recursive: true });
 
     const externalEventLog = join(projectRoot, "outside-events.jsonl");
     await writeFile(externalEventLog, "", "utf8");
-    await symlink(externalEventLog, join(sessionResponsesDir, "events.jsonl"));
+    await symlink(externalEventLog, join(sessionRequestsDir, "events.jsonl"));
 
     await assert.rejects(
       async () => {
@@ -602,15 +616,15 @@ test("runtime event logs reject dangling symlink leaf files", async () => {
     );
 
     const runtimePaths = await ensureRuntimePaths(projectRoot);
-    const sessionResponsesDir = join(
-      runtimePaths.responsesDir,
+    const sessionRequestsDir = join(
+      runtimePaths.historyDir,
       session.sessionId,
     );
-    await mkdir(sessionResponsesDir, { recursive: true });
+    await mkdir(sessionRequestsDir, { recursive: true });
 
     await symlink(
       join(projectRoot, "missing-events.jsonl"),
-      join(sessionResponsesDir, "events.jsonl"),
+      join(sessionRequestsDir, "events.jsonl"),
     );
 
     await assert.rejects(

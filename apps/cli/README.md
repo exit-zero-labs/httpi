@@ -26,7 +26,7 @@ When `--project-root` is omitted, the CLI discovers the nearest `httpi/config.ya
 - scaffolds a tracked `httpi/` project with `httpi init`
 - validates definitions before execution
 - runs requests and multi-step runs
-- persists sessions and artifacts under `.httpi/`
+- persists sessions and artifacts under `httpi/artifacts/`
 - lets you inspect artifacts and explicitly resume paused or failed runs
 
 ## Support

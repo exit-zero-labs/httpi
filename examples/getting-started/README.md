@@ -4,7 +4,7 @@
 
 This is the smallest complete `httpi` project in the repository: one environment, one request, and one run.
 
-The checked-in `.httpi/` directory is only there to show the runtime layout. Real projects should usually keep `.httpi/` untracked.
+The checked-in `httpi/artifacts/` directory is only there to show the runtime layout. Real projects should usually keep `httpi/artifacts/` Git-ignored apart from the tracked `.gitkeep` placeholders.
 
 ## Setup
 

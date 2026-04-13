@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/run.schema.json
+kind: run
+title: Investigate and restart
+env: dev
+inputs:
+  serviceId: payments-api
+steps:
+  - kind: parallel
+    id: gather-context
+    steps:
+      - kind: request
+        id: service-health
+        uses: ops/service-health
+      - kind: request
+        id: pending-alerts
+        uses: ops/pending-alerts
+      - kind: request
+        id: latest-deploy
+        uses: ops/latest-deploy
+
+  - kind: pause
+    id: inspect-before-restart
+    reason: Review diagnostics before restarting the worker
+
+  - kind: request
+    id: restart-worker
+    uses: ops/restart-worker

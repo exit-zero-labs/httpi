@@ -37,7 +37,7 @@ For most non-trivial changes, the expected local loop is:
 - prefer named exports
 - keep files in kebab-case
 - keep CLI and MCP packages thin; move shared behavior into `packages/`
-- do not commit secrets or runtime artifacts from `.httpi/`
+- do not commit secrets or runtime artifacts from `httpi/artifacts/`
 - keep documentation aligned with behavior changes
 
 ## Pull requests

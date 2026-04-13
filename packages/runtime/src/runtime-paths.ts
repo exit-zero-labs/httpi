@@ -1,5 +1,5 @@
 /**
- * Runtime path helpers for `.httpi/`.
+ * Runtime path helpers for `httpi/artifacts/`.
  *
  * The runtime package treats every path as security-sensitive: directories must
  * stay within the project root, must not traverse symlinks, and are created
@@ -22,7 +22,7 @@ export interface RuntimePaths {
   rootDir: string;
   runtimeDir: string;
   sessionsDir: string;
-  responsesDir: string;
+  historyDir: string;
   secretsPath: string;
 }
 
@@ -42,41 +42,41 @@ export const runtimeFileMode = 0o600;
 
 const sessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-/** Ensure the `.httpi/` runtime tree exists and stays inside the project root. */
+/** Ensure the `httpi/artifacts/` runtime tree exists and stays inside the project root. */
 export async function ensureRuntimePaths(
   projectRoot: string,
 ): Promise<RuntimePaths> {
   const runtimeDir = resolveFromRoot(projectRoot, runtimeDirectoryName);
   const sessionsDir = resolveFromRoot(runtimeDir, "sessions");
-  const responsesDir = resolveFromRoot(runtimeDir, "responses");
+  const historyDir = resolveFromRoot(runtimeDir, "history");
   const secretsPath = resolveFromRoot(runtimeDir, "secrets.yaml");
 
   await ensureProjectOwnedDirectory(
     projectRoot,
     runtimeDir,
-    "The local .httpi runtime directory",
+    "The local httpi/artifacts runtime directory",
   );
   await ensureProjectOwnedDirectory(
     projectRoot,
     sessionsDir,
-    "The local .httpi/sessions directory",
+    "The local httpi/artifacts/sessions directory",
   );
   await ensureProjectOwnedDirectory(
     projectRoot,
-    responsesDir,
-    "The local .httpi/responses directory",
+    historyDir,
+    "The local httpi/artifacts/history directory",
   );
   await Promise.all([
     chmod(runtimeDir, runtimeDirectoryMode),
     chmod(sessionsDir, runtimeDirectoryMode),
-    chmod(responsesDir, runtimeDirectoryMode),
+    chmod(historyDir, runtimeDirectoryMode),
   ]);
 
   return {
     rootDir: resolve(projectRoot),
     runtimeDir,
     sessionsDir,
-    responsesDir,
+    historyDir,
     secretsPath,
   };
 }
@@ -170,7 +170,7 @@ export function getSessionRuntimePaths(
   runtimePaths: RuntimePaths,
   sessionId: string,
 ): SessionRuntimePaths {
-  const artifactRoot = resolveFromRoot(runtimePaths.responsesDir, sessionId);
+  const artifactRoot = resolveFromRoot(runtimePaths.historyDir, sessionId);
   return {
     sessionPath: resolveFromRoot(runtimePaths.sessionsDir, `${sessionId}.json`),
     lockFilePath: resolveFromRoot(

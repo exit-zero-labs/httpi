@@ -35,7 +35,7 @@ httpi describe --run smoke
 httpi run --run smoke
 httpi session show <sessionId>
 httpi artifacts list <sessionId>
-httpi artifacts read <sessionId> steps/login/attempt-1/request.summary.json
+httpi artifacts read <sessionId> steps/login/attempt-1/request.json
 httpi resume <sessionId>
 ```
 
@@ -79,7 +79,7 @@ Unsafe example:
 
 ## 4. How to inspect a paused or failed run
 
-When `httpi` executes a run, it persists a session record and artifacts under `.httpi/`.
+When `httpi` executes a run, it persists a session record and artifacts under `httpi/artifacts/`.
 
 - `session show` / `get_session_state` tells you the session state, the failed or next step, and redacted step outputs
 - `artifacts list` / `list_artifacts` shows which files were captured
@@ -115,7 +115,7 @@ Useful signals that still remain visible:
 - `session.state`
 - `nextStepId`
 - whether a variable or output is marked secret
-- request/response metadata after header redaction
+- request artifacts, recorded response details, and errors after header redaction
 - artifact paths and manifest entries
 
 ## 6. Handling drift and exit code 3
@@ -154,13 +154,13 @@ This is especially useful before resume-aware workflows where later steps depend
 Treat:
 
 - `httpi/` as the tracked source of truth
-- `.httpi/` as the local runtime record of what already happened
+- `httpi/artifacts/` as the local runtime record of what already happened
 
 That split is important for agents:
 
 - tracked request and run definitions are reviewable and diffable
 - session and artifact files are evidence, not authoring input
-- in normal projects, `.httpi/secrets.yaml` must stay out of Git
+- in normal projects, `httpi/artifacts/secrets.yaml` must stay out of Git
 
 ## 9. Best next document
 

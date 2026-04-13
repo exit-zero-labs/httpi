@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Add item
+method: POST
+url: "{{baseUrl}}/commerce/carts/{{cartId}}/items"
+auth:
+  scheme: header
+  header: x-api-key
+  value: $ENV:COMMERCE_API_TOKEN
+body:
+  file: carts/add-item.json
+  contentType: application/json
+expect:
+  status: 201
+extract:
+  lineItemId:
+    from: $.id
+    required: true

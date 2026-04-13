@@ -42,7 +42,7 @@ The architecture is built around four constraints:
 
 1. **Request-first authoring** - request files are the main unit people read and edit.
 2. **Runs own orchestration** - sequencing, parallelism, and pause points live in run files.
-3. **Tracked intent, untracked runtime** - `httpi/` is source of truth; `.httpi/` is local execution state.
+3. **Tracked intent, git-ignored runtime** - `httpi/` is source of truth; `httpi/artifacts/` is local execution state.
 4. **Strict typing at every boundary** - file formats, compiled models, events, sessions, and interface payloads use runtime schemas and TypeScript types.
 5. **One engine, many adapters** - CLI and MCP wrap the same core packages.
 6. **Explainable execution** - step state, variable provenance, extracted values, and artifacts must be inspectable.
@@ -70,7 +70,7 @@ The architecture is built around four constraints:
                  │                                 │
                  ▼                                 ▼
         tracked project files              untracked runtime state
-               `httpi/`                          `.httpi/`
+               `httpi/`                 `httpi/artifacts/`
 ```
 
 ### 4.1 End-to-end lifecycle
@@ -81,7 +81,7 @@ An `httpi` execution flows through the packages in a fixed order:
 2. **definition loading** (`packages/definitions`) discovers the project, loads tracked YAML, validates references, and compiles an immutable snapshot
 3. **orchestration** (`packages/execution`) resolves variables and secrets, manages retries and pauses, and advances the session state machine
 4. **transport** (`packages/http`) performs the actual HTTP exchange, including buffered, streaming, and binary modes
-5. **persistence** (`packages/runtime`) writes sessions, artifacts, events, locks, and cancel markers under `.httpi/`
+5. **persistence** (`packages/runtime`) writes sessions, artifacts, events, locks, and cancel markers under `httpi/artifacts/`
 6. **presentation** (`apps/cli` or MCP) returns redacted results with stable exit codes or tool payloads
 
 The key design constraint is that compilation, execution, and persistence each have a single owner. Interface layers stay thin so CLI and MCP behavior cannot drift.
@@ -93,7 +93,7 @@ The key design constraint is that compilation, execution, and persistence each h
 | Project discovery and typed YAML loading | `packages/definitions` | Path-derived identity, schema validation, and cross-file reference checks need one source of truth |
 | Snapshot compilation and request materialization | `packages/execution` | Execution owns precedence rules, step graphs, retries, and provenance |
 | HTTP transport and response parsing | `packages/http` | Transport concerns stay isolated from orchestration and storage |
-| Sessions, locks, artifacts, and cancel markers | `packages/runtime` | All `.httpi/` on-disk formats and ownership checks stay in one place |
+| Sessions, locks, artifacts, and cancel markers | `packages/runtime` | All `httpi/artifacts/` on-disk formats and ownership checks stay in one place |
 | CLI and MCP rendering | `apps/cli` | Human/operator formatting and MCP schemas should not leak into engine packages |
 
 ## 5. Monorepo layout
@@ -115,7 +115,7 @@ The key design constraint is that compilation, execution, and persistence each h
 - `apps/*` may depend on packages but not on each other
 - `packages/contracts` must not own file IO, HTTP transport, or CLI/MCP formatting
 - `packages/execution` is the orchestration layer and may depend on `definitions`, `http`, `runtime`, `contracts`, and `shared`
-- `packages/runtime` owns on-disk formats and lock behavior for `.httpi/`
+- `packages/runtime` owns on-disk formats and lock behavior for `httpi/artifacts/`
 - `packages/shared` stays small and generic; domain logic does not accumulate there
 
 ## 6. Project file model
@@ -132,11 +132,11 @@ repo/
 │   │   └── headers/
 │   ├── bodies/
 │   ├── requests/
-│   └── runs/
-├── .httpi/
-│   ├── responses/
-│   ├── sessions/
-│   └── secrets.yaml
+│   ├── runs/
+│   └── artifacts/
+│       ├── history/
+│       ├── sessions/
+│       └── secrets.yaml
 ├── examples/
 │   └── */
 │       └── httpi/
@@ -157,9 +157,9 @@ repo/
 | `httpi/bodies/**`                  | Reusable request payload files                     |
 | `httpi/requests/**/*.request.yaml` | Atomic request definitions                         |
 | `httpi/runs/**/*.run.yaml`         | Multi-step execution plans                         |
-| `.httpi/secrets.yaml`              | Local secret aliases, normally Git-ignored         |
-| `.httpi/sessions/*.json`           | Persisted session snapshots                        |
-| `.httpi/responses/<sessionId>/...` | Captured runtime artifacts                         |
+| `httpi/artifacts/secrets.yaml`              | Local secret aliases, normally Git-ignored         |
+| `httpi/artifacts/sessions/*.json`           | Persisted session snapshots                        |
+| `httpi/artifacts/history/<sessionId>/...` | Captured runtime artifacts                         |
 
 ### 6.3 Identity and references
 
@@ -344,11 +344,11 @@ Frozen at run start:
 Late-bound at step attempt time:
 
 - direct `$ENV:NAME` reads
-- `.httpi/secrets.yaml` alias resolution
+- `httpi/artifacts/secrets.yaml` alias resolution
 
 ### 8.2 Sessions
 
-Sessions are first-class runtime objects stored at `.httpi/sessions/<sessionId>.json`.
+Sessions are first-class runtime objects stored at `httpi/artifacts/sessions/<sessionId>.json`.
 
 Each session records:
 
@@ -422,7 +422,7 @@ Wildcards, filters, recursive descent, and other multi-match forms are intention
 v0 supports two runtime-only secret sources:
 
 1. direct `$ENV:NAME` references
-2. `.httpi/secrets.yaml` aliases referenced as `{{secrets.aliasName}}`
+2. `httpi/artifacts/secrets.yaml` aliases referenced as `{{secrets.aliasName}}`
 
 Secret rules:
 
@@ -505,7 +505,7 @@ Rules:
 
 Resume follows a deliberate gate sequence:
 
-1. read the persisted session from `.httpi/sessions/`
+1. read the persisted session from `httpi/artifacts/sessions/`
 2. require a resumable state (`paused` or `failed`)
 3. compare stored definition hashes against the current tracked files
 4. reacquire the session lock so only one caller can continue execution
@@ -527,24 +527,23 @@ Rules:
 
 ## 10. Runtime artifacts
 
-Each session writes artifacts under `.httpi/responses/<sessionId>/`.
+Each session writes artifacts under `httpi/artifacts/history/<sessionId>/`.
 
 ```text
-.httpi/responses/<sessionId>/
+httpi/artifacts/history/<sessionId>/
 ├── manifest.json
 ├── events.jsonl
 └── steps/
     └── <stepId>/
-        ├── request.summary.json
-        ├── response.meta.json
+        ├── request.json
         └── body.json | body.txt | body.bin
 ```
 
 Artifact rules:
 
-- request summaries and response metadata are captured by policy
+- canonical request artifacts capture the fully materialized request plus the recorded response or error outcome
 - bodies may be captured in full, as metadata only, or not at all
-- artifacts for failed responses are still written when a response exists
+- request artifacts are still written when a materialized request fails or times out
 - redaction applies consistently to CLI, MCP, session summaries, and artifact reads
 
 Required lifecycle event fields:
@@ -623,8 +622,8 @@ The same engine must back both interfaces.
 
 ### 12.1 Security
 
-- `.httpi/` must be Git-ignored in normal projects; checked-in examples may include placeholder runtime skeletons
-- `httpi init` must add `.httpi/` to `.gitignore`
+- `httpi/artifacts/` must be Git-ignored in normal projects apart from tracked `.gitkeep` placeholders
+- `httpi init` must add `httpi/artifacts/` ignore rules to `.gitignore`
 - tracked files must not contain secret literals in known secret-bearing fields
 - runtime-owned session and artifact files should be owner-readable only when supported
 - public inspection surfaces should redact request headers, response headers, secret-looking extracted values, and secret-bearing strings

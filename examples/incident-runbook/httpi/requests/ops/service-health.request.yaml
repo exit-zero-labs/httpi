@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Get service health
+method: GET
+url: "{{baseUrl}}/ops/services/{{serviceId}}/health"
+auth:
+  scheme: header
+  header: x-ops-key
+  value: $ENV:OPS_API_KEY
+expect:
+  status: 200
+extract:
+  currentState:
+    from: $.state
+    required: true

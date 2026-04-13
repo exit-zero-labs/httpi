@@ -88,7 +88,11 @@ export async function executeRequestStepWithRetry(
     await sleep(delayMs);
   }
 
-  return lastOutcome!;
+  if (!lastOutcome) {
+    throw new Error("Retry loop completed without producing an outcome.");
+  }
+
+  return lastOutcome;
 }
 
 function isRetryableFailure(

@@ -12,7 +12,7 @@ This is the canonical full workflow example for `httpi`. It shows:
 ## Setup
 
 1. edit `httpi/env/dev.env.yaml` so `baseUrl` points at your service or mock server
-2. replace the placeholder value in `.httpi/secrets.yaml` with your local `devPassword`
+2. create `httpi/artifacts/secrets.yaml` with your local `devPassword`
 
 ```yaml
 devPassword: swordfish
@@ -31,4 +31,4 @@ httpi resume <sessionId> --project-root examples/pause-resume
 
 The automated suites use this example as the canonical pause/resume flow, so it stays aligned with real CLI and MCP behavior.
 
-The checked-in `.httpi/` files are example placeholders so the runtime layout is visible in the repository.
+The checked-in `httpi/artifacts/` files are `.gitkeep` placeholders so the runtime layout is visible in the repository without checking in real runtime values.

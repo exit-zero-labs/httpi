@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/request.schema.json
+kind: request
+title: Get item
+method: GET
+url: "{{baseUrl}}/basic/items/{{itemId}}"
+auth:
+  scheme: basic
+  username: admin
+  password: "{{secrets.adminPassword}}"
+expect:
+  status: 200
+extract:
+  itemStatus:
+    from: $.status
+    required: true

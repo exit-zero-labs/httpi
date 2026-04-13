@@ -98,7 +98,13 @@ const artifactEntrySchema = z.object({
   sessionId: z.string(),
   stepId: z.string(),
   attempt: z.number(),
-  kind: z.enum(["request.summary", "response.meta", "body"]),
+  kind: z.enum([
+    "request",
+    "body",
+    "stream.chunks",
+    "stream.assembled",
+    "response.binary",
+  ]),
   relativePath: z.string(),
   contentType: z.string().optional(),
 });

@@ -1,27 +1,21 @@
 {
   "yaml.schemas": {
     "./packages/contracts/schemas/config.schema.json": [
-      "httpi/config.yaml",
       "examples/**/httpi/config.yaml"
     ],
     "./packages/contracts/schemas/env.schema.json": [
-      "httpi/env/**/*.env.yaml",
       "examples/**/httpi/env/**/*.env.yaml"
     ],
     "./packages/contracts/schemas/request.schema.json": [
-      "httpi/requests/**/*.request.yaml",
       "examples/**/httpi/requests/**/*.request.yaml"
     ],
     "./packages/contracts/schemas/run.schema.json": [
-      "httpi/runs/**/*.run.yaml",
       "examples/**/httpi/runs/**/*.run.yaml"
     ],
     "./packages/contracts/schemas/header-block.schema.json": [
-      "httpi/blocks/headers/**/*.yaml",
       "examples/**/httpi/blocks/headers/**/*.yaml"
     ],
     "./packages/contracts/schemas/auth-block.schema.json": [
-      "httpi/blocks/auth/**/*.yaml",
       "examples/**/httpi/blocks/auth/**/*.yaml"
     ]
   }

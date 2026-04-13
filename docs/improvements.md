@@ -193,8 +193,7 @@ New artifact layout under the step:
 
 ```text
 steps/<stepId>/
-├── request.summary.json
-├── response.meta.json
+├── request.json
 ├── stream/
 │   ├── chunks.jsonl        # { seq, tOffsetMs, bytes, preview }
 │   └── assembled.json | body.txt
@@ -275,11 +274,11 @@ body:
 ```yaml
 response:
   mode: binary
-  saveTo: "./.httpi/downloads/{{sessionId}}/report.csv"
+  saveTo: "./httpi/artifacts/downloads/{{sessionId}}/report.csv"
   maxBytes: 536870912
 ```
 
-Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a path; the file itself may live outside `.httpi/responses/` to keep the JSONL/manifest small.
+Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a path; the file itself may live outside `httpi/artifacts/history/` to keep the JSONL/manifest small.
 
 **Principle check.** Runtime-only artifacts; tracked fixtures live under `httpi/bodies/` as before. Redaction rules extend to "strip by path" for known binary fields.
 
@@ -315,7 +314,7 @@ Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a 
 - [x] **A2 `onSignal` behavior.** Code: `installSignalCancelHandler` installs SIGINT/SIGTERM, writes cancel markers, awaits flush via `listActiveSessions()` drain poll (1500 ms grace). Fixture pending.
 - [x] **A3 multipart upload.** Code: `packages/execution/src/request-body.ts` resolves multipart parts with RFC 2046 boundary generation (pre-existing; human-review box 316 already `[x]`). Fixture pending.
 - [x] **A3 binary body.** Code: `packages/execution/src/request-body.ts` handles `kind: binary`; `packages/http/src/index.ts` threads binary buffer into fetch body. Fixture pending.
-- [x] **A3 binary response.** Code: `packages/http/src/index.ts` `executeBinaryResponse` streams to `saveTo` via `createWriteStream` + `crypto.createHash("sha256")`; `packages/runtime/src/artifacts.ts` manifest entry `response.binary` with `sha256`/`sizeBytes`/`relativePath`; body is NOT inlined in `response.meta.json`. Fixture pending.
+- [x] **A3 binary response.** Code: `packages/http/src/index.ts` `executeBinaryResponse` streams to `saveTo` via `createWriteStream` + `crypto.createHash("sha256")`; `packages/runtime/src/artifacts.ts` manifest entry `response.binary` with `sha256`/`sizeBytes`/`relativePath`; body is NOT inlined in `request.json`. Fixture pending.
 - [x] **A3 `maxBytes` enforcement.** Code: `executeBinaryResponse` truncates + aborts controller + throws `BINARY_MAXBYTES_EXCEEDED` with structured diagnostic. Fixture pending.
 
 **Human review checkpoints:**
@@ -325,7 +324,7 @@ Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a 
 - [x] Walk through the `packages/http` streaming implementation and verify that chunk capture happens inside the same code path regardless of whether the caller is CLI or MCP (no forked logic).
 - [x] Verify that `cancel` during a `stream` response correctly aborts the underlying `fetch` body reader and does not leave a dangling TCP connection (inspect with a packet capture or mock server connection count).
 - [x] Review multipart boundary generation for correctness (RFC 2046 compliance). Confirm no boundary collision with file content.
-- [x] Confirm binary `saveTo` paths that escape the `.httpi/` directory are rejected or warned about. Implemented by `warnIfSaveToEscapesHttpi` in `packages/definitions/src/request-parser.ts`: absolute paths and `..`-traversal (OS-agnostic normalization) emit an ERROR-level `BINARY_SAVE_TO_UNSAFE_PATH`; paths inside the project tree but outside `.httpi/` emit a WARNING-level `BINARY_SAVE_TO_OUTSIDE_HTTPI`.
+- [x] Confirm binary `saveTo` paths that escape the `httpi/artifacts/` directory are rejected or warned about. Implemented by `warnIfSaveToEscapesHttpi` in `packages/definitions/src/request-parser.ts`: absolute paths and `..`-traversal (OS-agnostic normalization) emit an ERROR-level `BINARY_SAVE_TO_UNSAFE_PATH`; paths inside the project tree but outside `httpi/artifacts/` emit a WARNING-level `BINARY_SAVE_TO_OUTSIDE_HTTPI`.
 
 ---
 
@@ -446,7 +445,7 @@ expect:
         ttl: 30d
 ```
 
-The judge adapter itself is a configured provider in `httpi/config.yaml`. It calls an HTTP endpoint (OpenAI, Anthropic, local llama.cpp) — httpi does not embed a judge model. Verdict cache lives under `.httpi/judges/` and is disposable.
+The judge adapter itself is a configured provider in `httpi/config.yaml`. It calls an HTTP endpoint (OpenAI, Anthropic, local llama.cpp) — httpi does not embed a judge model. Verdict cache lives under `httpi/artifacts/judges/` and is disposable.
 
 **Principle check.** The rubric is tracked; the cache is runtime. No scripts. The judge is a configured HTTP call, same engine path as any other request.
 
@@ -934,7 +933,7 @@ auth:
       exp: "+5m"
 ```
 
-Token caches are stored under `.httpi/auth/` keyed by `cacheKey`. Tokens are never written to tracked files or unredacted artifacts.
+Token caches are stored under `httpi/artifacts/auth/` keyed by `cacheKey`. Tokens are never written to tracked files or unredacted artifacts.
 
 **Principle check.** Each scheme is a closed vocabulary. Signing templates use a documented mini-grammar, not user code. Blocks under `httpi/blocks/auth/` stay pure data.
 
@@ -958,11 +957,11 @@ Token caches are stored under `.httpi/auth/` keyed by `cacheKey`. Tokens are nev
 
 #### D3. Pluggable secret resolvers
 
-**What.** Add resolver kinds beyond `$ENV:NAME` and `.httpi/secrets.yaml`: HashiCorp Vault, AWS Secrets Manager, 1Password CLI, Azure Key Vault, GCP Secret Manager, and the OS keychain.
+**What.** Add resolver kinds beyond `$ENV:NAME` and `httpi/artifacts/secrets.yaml`: HashiCorp Vault, AWS Secrets Manager, 1Password CLI, Azure Key Vault, GCP Secret Manager, and the OS keychain.
 
 **Why.** P5, P8 block adoption without this. P6 soft-requires it.
 
-**How.** A resolver table in `httpi/config.yaml` (NOT `.httpi/`, because resolver *configuration* is project intent; only the resolved values are runtime-only):
+**How.** A resolver table in `httpi/config.yaml` (NOT `httpi/artifacts/`, because resolver *configuration* is project intent; only the resolved values are runtime-only):
 
 ```yaml
 secrets:
@@ -1045,7 +1044,7 @@ Running against a guarded env without meeting conditions fails with exit code `2
 > **Status (2026-04-12).** Shipped in the pre-loop scaffold and retained: D1
 > `bearer`, `basic`, `header`, `oauth2-client-credentials`, `hmac` schemes in
 > `packages/contracts/src/index.ts` / `packages/execution/src/request-resolution.ts`;
-> D3 env + `.httpi/secrets.yaml` resolvers (`packages/runtime/src/secrets.ts`);
+> D3 env + `httpi/artifacts/secrets.yaml` resolvers (`packages/runtime/src/secrets.ts`);
 > D4 environment guards (`envGuards.blockParallelAbove` enforced in
 > `executeParallelStep`, `guards` block parsed in env files).
 >
@@ -1067,7 +1066,7 @@ Running against a guarded env without meeting conditions fails with exit code `2
 
 - [x] **D1 `bearer` scheme.** Configure `auth.scheme: bearer` with a token variable. Verify the outbound request has `Authorization: Bearer <token>`. Verify the token value is redacted in all artifacts and CLI output.
 - [x] **D1 `basic` scheme.** Configure basic auth. Verify the `Authorization: Basic <base64>` header is correct. Verify the decoded credential never appears in artifacts.
-- [x] **D1 `oauth2-client-credentials`.** Set up a mock OAuth2 token endpoint. Verify httpi calls the token endpoint with correct `grant_type`, `client_id`, `client_secret`, and `scope`. Verify the access token is attached to the subsequent request. Verify the token is cached under `.httpi/auth/` keyed by `cacheKey`. Run a second request; verify no second token call (cache hit).
+- [x] **D1 `oauth2-client-credentials`.** Set up a mock OAuth2 token endpoint. Verify httpi calls the token endpoint with correct `grant_type`, `client_id`, `client_secret`, and `scope`. Verify the access token is attached to the subsequent request. Verify the token is cached under `httpi/artifacts/auth/` keyed by `cacheKey`. Run a second request; verify no second token call (cache hit).
 - [ ] **D1 `oauth2-authorization-code` (local redirect).** Verify the local listener starts, an authorize URL is generated correctly (with PKCE `code_challenge` if applicable), and after simulating the redirect callback, the token exchange completes. Verify the token is cached and the listener shuts down.
 - [x] **D1 `hmac` signing.** Configure HMAC with a known secret and signing template. Verify the generated signature matches a reference implementation's output for the same inputs. Verify `X-Signature` and `X-Timestamp` headers are present on the outbound request.
 - [ ] **D1 `aws-sigv4`.** Configure AWS SigV4 with static credentials. Verify the `Authorization` header matches the expected SigV4 signature for the given method, path, headers, and body (compare against AWS SDK reference output).
@@ -1079,7 +1078,7 @@ Running against a guarded env without meeting conditions fails with exit code `2
 - [ ] **D2 refresh failure.** Mock the token endpoint to also return an error on refresh. Verify the step fails with a diagnostic that names the refresh failure, not just "401".
 - [ ] **D3 resolver chain.** Configure three resolvers: `env`, `vault` (mock), `onepassword` (mock). Set a secret in the env resolver only. Verify it resolves. Remove it from env, add it to vault mock. Verify vault supplies it. Verify the resolved value never touches disk.
 - [ ] **D3 resolution failure.** Reference a secret that no resolver can provide. Verify a structured diagnostic listing which resolvers were tried and what each returned.
-- [ ] **D3 resolver config in tracked file.** Verify `secrets.resolvers` config lives in `httpi/config.yaml` (tracked), not in `.httpi/`. Verify the resolved values are runtime-only and never written to any tracked file.
+- [ ] **D3 resolver config in tracked file.** Verify `secrets.resolvers` config lives in `httpi/config.yaml` (tracked), not in `httpi/artifacts/`. Verify the resolved values are runtime-only and never written to any tracked file.
 - [x] **D4 environment guard — missing env var.** Configure `guards.requireEnv: HTTPI_CONFIRM_PROD=1`. Run without setting the variable. Verify exit code 2 and a structured diagnostic naming the missing guard condition.
 - [x] **D4 environment guard — wrong branch.** Configure `guards.blockIfBranchNotIn: [main]`. Run on a feature branch. Verify exit code 2.
 - [ ] **D4 environment guard — MCP approval.** Via MCP, attempt to run against a guarded env. Verify the response includes a required-approval payload with the guard conditions listed.
@@ -1091,7 +1090,7 @@ Running against a guarded env without meeting conditions fails with exit code `2
 **Human review checkpoints:**
 
 - [x] Review every auth scheme implementation for secret lifecycle: confirm the secret is resolved into memory, used for header/signature computation, and then NOT stored anywhere (no writing to disk, no logging, no inclusion in event payloads).
-- [ ] Verify `.httpi/auth/` token cache files are encrypted or at minimum excluded from any export/audit command. Confirm they are cleaned up on `httpi clean`.
+- [ ] Verify `httpi/artifacts/auth/` token cache files are encrypted or at minimum excluded from any export/audit command. Confirm they are cleaned up on `httpi clean`.
 - [x] Review the HMAC signing template mini-grammar parser. Confirm it is a closed substitution grammar (`{method}`, `{path}`, `{timestamp}`, `{body.sha256}`) — no arbitrary expressions, no `eval`.
 - [ ] Verify `oauth2-authorization-code` local redirect listener validates the `state` parameter to prevent CSRF.
 - [ ] Review D4 guard evaluation order. Confirm guards are evaluated BEFORE any request compilation or secret resolution occurs — a guarded env must not trigger vault calls.
@@ -1285,7 +1284,7 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 
 **Why.** P2, P4, P5, P7, P8. P7: "If it doesn't block a PR, it doesn't get adopted."
 
-**How.** New `packages/reporters/` (leaf utility package) with one reporter per format. CLI writes to a configurable path (`--reporter junit:./.httpi/reports/junit.xml`). GitHub reporter emits `::error file=...,line=...` annotations derived from E2 diagnostics.
+**How.** New `packages/reporters/` (leaf utility package) with one reporter per format. CLI writes to a configurable path (`--reporter junit:./httpi/artifacts/reports/junit.xml`). GitHub reporter emits `::error file=...,line=...` annotations derived from E2 diagnostics.
 
 **Principle check.** Parity preserved — MCP returns the same structured results and a reporter URI.
 
@@ -1299,7 +1298,7 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 
 **Why.** P4, P7.
 
-**How.** Both artifacts live under `.httpi/responses/<sessionId>/`. `summary.md` uses a stable, minimal template — no frills, just facts.
+**How.** Both artifacts live under `httpi/artifacts/history/<sessionId>/`. `summary.md` uses a stable, minimal template — no frills, just facts.
 
 **Priority.** **P1**.
 
@@ -1321,7 +1320,7 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 
 > **Status (2026-04-12).** Landed this loop: **F1 JSON reporter** via
 > `httpi run --reporter json[:path]` writing the full execution result
-> (assertions + diagnostics + session state) to `.httpi/reports/run.json`
+> (assertions + diagnostics + session state) to `httpi/artifacts/reports/run.json`
 > or a caller-specified path (`apps/cli/src/index.ts` `maybeWriteReporter`).
 > Exit codes already satisfy F1 exit-code rules: 0 on success, 1
 > (`executionFailure`) on assertion/HTTP failure, 2 (`validationFailure`)
@@ -1336,14 +1335,14 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 
 **Automated checks (CI / agent-executable):**
 
-- [ ] **F1 JUnit output.** Run a session with 3 passing steps and 1 failing step using `--reporter=junit:./.httpi/reports/junit.xml`. Parse the XML. Verify it is valid JUnit XML with correct `<testsuite>` counts (`tests="4"`, `failures="1"`), each `<testcase>` has `name`, `classname`, and `time` attributes, and the failure includes the assertion message.
+- [ ] **F1 JUnit output.** Run a session with 3 passing steps and 1 failing step using `--reporter=junit:./httpi/artifacts/reports/junit.xml`. Parse the XML. Verify it is valid JUnit XML with correct `<testsuite>` counts (`tests="4"`, `failures="1"`), each `<testcase>` has `name`, `classname`, and `time` attributes, and the failure includes the assertion message.
 - [ ] **F1 TAP output.** Same session with `--reporter=tap`. Verify the output conforms to TAP 14 format: plan line, `ok`/`not ok` per step, diagnostic lines for failures.
 - [ ] **F1 GitHub Actions annotations.** Run with `--reporter=github`. Verify `::error file=...,line=...::message` annotations are emitted to stdout for each failure. Verify `file` and `line` match the YAML source location from E2 diagnostics.
 - [x] **F1 JSON reporter.** Run with `--reporter=json`. Verify the output is valid JSON with the same structured assertion results as MCP returns.
 - [x] **F1 exit codes.** Verify exit code 0 when all assertions pass, exit code 1 when any assertion fails, and exit code 2 for configuration/validation errors (e.g., guard failures from D4).
 - [ ] **F1 multiple reporters.** Run with `--reporter=junit:a.xml --reporter=github`. Verify both outputs are produced.
 - [ ] **F1 MCP parity.** Run the same session via MCP. Verify the structured result includes a `reporterUri` field (or equivalent) pointing to the generated report file.
-- [ ] **F2 `summary.json`.** After a run, verify `.httpi/responses/<sessionId>/summary.json` exists and contains: `passCount`, `failCount`, `totalSteps`, `totalLatencyMs`, assertion breakdown (by type), and drift state.
+- [ ] **F2 `summary.json`.** After a run, verify `httpi/artifacts/history/<sessionId>/summary.json` exists and contains: `passCount`, `failCount`, `totalSteps`, `totalLatencyMs`, assertion breakdown (by type), and drift state.
 - [ ] **F2 `summary.md`.** Verify `summary.md` exists alongside `summary.json`, is valid Markdown, and includes a concise table of step outcomes. Verify it is stable across identical runs (no timestamps or random content that would cause noisy PR diffs).
 - [ ] **F2 token/cost fields.** If H2 token accounting is also implemented, verify `summary.json` includes `totalTokens`, `totalCost`, and per-model breakdowns.
 - [ ] **F3 `httpi diff` basic.** Run the same request twice (with a fixture change between runs). Run `httpi diff <sessionA> <sessionB>`. Verify the output includes status changes, latency deltas, assertion result deltas, and body diffs as JSON Patch.
@@ -1420,7 +1419,7 @@ cassettes:
 
 - `httpi run --record <runId>`: stores per-interaction JSON files under `httpi/cassettes/<runId>/`.
 - `httpi run --replay <runId>`: matches outbound requests against cassettes; a miss is a run failure by default.
-- Cassettes are tracked (PR-reviewable) unless the operator declares a cassette as sensitive, in which case it lives under `.httpi/cassettes/`.
+- Cassettes are tracked (PR-reviewable) unless the operator declares a cassette as sensitive, in which case it lives under `httpi/artifacts/cassettes/`.
 
 **Principle check.** Cassettes as tracked artifacts is a new twist but stays data-only. Redaction is declarative.
 
@@ -1452,7 +1451,7 @@ cassettes:
 >   parsers + per-row artifact subtrees + concurrency cap. Closest
 >   existing primitive is B6 `iterate` in `packages/execution/src/iterate-execution.ts`; a follow-up can refactor that into a shared fan-out executor.
 > - **G2 record/replay cassettes** — new `--record` / `--replay` modes,
->   cassette matcher, cassette redaction, `.httpi/cassettes/` vs
+>   cassette matcher, cassette redaction, `httpi/artifacts/cassettes/` vs
 >   `httpi/cassettes/` split for sensitive recordings.
 > - **G3 HAR import** — new `httpi import har <file>` command emitting
 >   path-deterministic request YAMLs with secret placeholders.
@@ -1471,7 +1470,7 @@ cassettes:
 - [ ] **G1 concurrency cap.** With `concurrency: 1` and 5 rows each taking 200 ms, verify total time ≥ 1000 ms. With `concurrency: 5`, verify ≈ 200 ms.
 - [ ] **G1 empty dataset.** Run with an empty JSONL file. Verify the step completes successfully with 0 iterations and a clear diagnostic noting the empty dataset.
 - [ ] **G1 malformed dataset.** Run with a JSONL file containing an invalid JSON line. Verify a structured diagnostic with the file path and line number of the bad record.
-- [ ] **G1 tracked dataset location.** Verify datasets referenced as `datasets/prompts.jsonl` resolve under `httpi/datasets/`, not `.httpi/`.
+- [ ] **G1 tracked dataset location.** Verify datasets referenced as `datasets/prompts.jsonl` resolve under `httpi/datasets/`, not `httpi/artifacts/`.
 - [ ] **G2 record mode.** Run `httpi run --record <runId>` against a live fixture server. Verify cassette files are written under `httpi/cassettes/<runId>/` with one JSON file per interaction. Verify each cassette contains method, URL, request headers (redacted), request body, response status, response headers (redacted), and response body (redacted per J2 rules).
 - [ ] **G2 replay mode — match.** Run `httpi run --replay <runId>`. Verify no outbound HTTP calls are made (mock server receives zero requests). Verify the responses served from cassettes produce identical assertion results as the original run.
 - [ ] **G2 replay mode — miss.** Modify a request URL so it no longer matches any cassette. Run in replay mode. Verify the run fails with a diagnostic identifying the unmatched request.
@@ -1487,7 +1486,7 @@ cassettes:
 - [ ] Review G1 dataset parsing for injection safety. Confirm that row values used in `{{row.X}}` templates are treated as literal values and cannot inject YAML structure, additional template expressions, or escape the variable boundary.
 - [ ] Verify G2 cassette matching handles non-deterministic request fields (e.g., timestamps in bodies, random UUIDs in headers) gracefully. Confirm the `body.hash` strategy hashes the body AFTER applying redaction/masking, so volatile fields don't break matching.
 - [ ] Review G3 HAR import path derivation. Confirm the mapping from HAR entry URL to file path is deterministic, avoids path traversal (no `../`), and handles query parameters and fragments safely.
-- [ ] Confirm G2 sensitive cassette files (declared as sensitive by the operator) correctly land under `.httpi/cassettes/` instead of `httpi/cassettes/` and are `.gitignore`-d.
+- [ ] Confirm G2 sensitive cassette files (declared as sensitive by the operator) correctly land under `httpi/artifacts/cassettes/` instead of `httpi/cassettes/` and are `.gitignore`-d.
 
 ---
 
@@ -1595,7 +1594,7 @@ Chaos only applies when the request's env resolves to a declared `chaos-safe` ma
 - [ ] **H1 attempt spans.** Enable retries on a step that fails once then succeeds. Verify 2 attempt spans exist as children of the step span, with the first marked as an error.
 - [ ] **H1 stream chunk spans.** Enable `spans.streamChunks: true` on a streaming request with 5 chunks. Verify 5 chunk spans exist under the step span. Disable the flag; verify no chunk spans are emitted.
 - [ ] **H1 trace stability across pause/resume.** Pause a run mid-step, then resume. Verify the `traceId` is identical before and after resume. Verify the resumed step span has the same parent as it would have without the pause.
-- [ ] **H1 `otlp.jsonl` local export.** Configure local file export. Verify `.httpi/telemetry/otlp.jsonl` is written with one JSON object per span, parseable by standard OTel tooling.
+- [ ] **H1 `otlp.jsonl` local export.** Configure local file export. Verify `httpi/artifacts/telemetry/otlp.jsonl` is written with one JSON object per span, parseable by standard OTel tooling.
 - [ ] **H1 redaction in spans.** Verify span attributes do not contain secret values. Configure a redaction rule; verify the corresponding span attribute is redacted.
 - [ ] **H2 token accounting — Anthropic.** Configure `response.interpret.kind: llm-usage, provider: anthropic`. Send a response with a standard Anthropic `usage` block. Verify the step's `summary.json` includes `usage.input_tokens`, `usage.output_tokens`, and `cost` computed from the price table.
 - [ ] **H2 token accounting — OpenAI.** Same test with `provider: openai` and an OpenAI-shaped usage block.
@@ -1868,7 +1867,7 @@ Applied at capture time, not display time. Same rules feed CLI output, MCP outpu
 - [ ] **J2 pattern redaction — named.** Configure `redactPatterns: [{ kind: email }]`. Verify email addresses in response bodies are redacted even without explicit JSONPath targeting.
 - [ ] **J2 pattern redaction — regex.** Configure `redactPatterns: [{ kind: regex, pattern: "sk-live-[A-Za-z0-9]+" }]`. Verify matching strings are redacted in all outputs.
 - [ ] **J2 capture-time enforcement.** Verify redaction occurs BEFORE writing to disk. Inspect the raw artifact file bytes (not through the httpi read path) and confirm the redacted value is never present in the file.
-- [ ] **J2 uniform application.** For a single redaction rule, verify it applies identically across: CLI terminal output, MCP response JSON, session artifacts (`.httpi/responses/`), cassette files (G2), CI reporter output (F1 JUnit/TAP/GitHub), OTel spans (H1), and audit exports (J1). All must show the same redaction placeholder.
+- [ ] **J2 uniform application.** For a single redaction rule, verify it applies identically across: CLI terminal output, MCP response JSON, session artifacts (`httpi/artifacts/history/`), cassette files (G2), CI reporter output (F1 JUnit/TAP/GitHub), OTel spans (H1), and audit exports (J1). All must show the same redaction placeholder.
 - [ ] **J3 pre-commit hook — secret detected.** Place `sk-live-abc123def456` in a tracked YAML file. Run `httpi check secrets`. Verify exit code 1 and a diagnostic naming the file, line, and matched pattern.
 - [ ] **J3 pre-commit hook — clean.** Run `httpi check secrets` on a project with no secret literals. Verify exit code 0.
 - [ ] **J3 pattern alignment.** Verify `httpi check secrets` uses the same pattern vocabulary as J2 `redactPatterns`. A pattern configured in J2 must also be detected by J3.
@@ -1958,7 +1957,7 @@ Applied at capture time, not display time. Same rules feed CLI output, MCP outpu
 Every P0–P3 item above was checked against these invariants. Any future proposal that breaks one of them must be rejected outright.
 
 1. **Pure-data YAML.** No embedded scripting, no `eval`, no Lua/JS hooks, no user-supplied predicates. Every new feature expands a closed vocabulary that ships with the engine.
-2. **Tracked intent, untracked runtime.** `httpi/` is the source of truth; `.httpi/` holds evidence. A new improvement may add tracked files (snapshots, cassettes, rubrics, datasets, GraphQL queries, schemas) or runtime files (auth caches, judge caches, downloads, telemetry exports), never both in the same place.
+2. **Tracked intent, untracked runtime.** `httpi/` is the source of truth; `httpi/artifacts/` holds evidence. A new improvement may add tracked files (snapshots, cassettes, rubrics, datasets, GraphQL queries, schemas) or runtime files (auth caches, judge caches, downloads, telemetry exports), never both in the same place.
 3. **Path-derived identity.** File-path is the canonical ID. Titles are cosmetic.
 4. **CLI ↔ MCP parity.** Every new command surfaces identically in both adapters with the same diagnostics, same redaction, same artifact semantics.
 5. **Explicit, operator-driven recovery.** No auto-retries beyond declared policy; no automatic rollback; no silent resume.

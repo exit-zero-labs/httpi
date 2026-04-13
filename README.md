@@ -7,7 +7,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/exit-zero-labs/httpi?style=flat-square"></a>
 </p>
 
-`httpi` is a file-based HTTP workflow runner for repositories. It keeps tracked request intent in `httpi/`, local runtime state in `.httpi/`, and exposes the same execution model through a CLI and an MCP server — both shipped in a single binary.
+`httpi` is a file-based HTTP workflow runner for repositories. It keeps tracked request intent in `httpi/`, git-ignored runtime state in `httpi/artifacts/`, and exposes the same execution model through a CLI and an MCP server — both shipped in a single binary.
 
 Use it when API validation should live next to the code it exercises, with explicit runs, persisted artifacts, and pause/resume semantics that both humans and AI agents can inspect.
 
@@ -33,7 +33,7 @@ httpi init
 | --- | --- |
 | tracked request definitions | plain files under `httpi/` |
 | multi-step API workflows | named runs with sequential, parallel, and pause-aware steps |
-| inspectable execution evidence | persisted, redacted sessions and artifacts under `.httpi/` |
+| inspectable execution evidence | persisted, redacted sessions and artifacts under `httpi/artifacts/` |
 | one model for humans and agents | the same engine through the CLI and the MCP adapter |
 
 ## Quick start
@@ -49,7 +49,7 @@ httpi run --run smoke
 
 `httpi init` gives you a small but real starting point: one environment, one request, one run, and schema-aware YAML files.
 
-If the flow needs local secrets, add them under `.httpi/secrets.yaml`:
+If the flow needs local secrets, add them under `httpi/artifacts/secrets.yaml`:
 
 ```yaml
 devPassword: swordfish
@@ -72,26 +72,26 @@ httpi resume <sessionId>
 
 ```text
 demo-api/
-├── httpi/
-│   ├── config.yaml
-│   ├── env/
-│   │   └── dev.env.yaml
-│   ├── requests/
-│   │   └── ping.request.yaml
-│   └── runs/
-│       └── smoke.run.yaml
-└── .httpi/
-    ├── secrets.yaml
-    ├── sessions/
-    └── responses/
+└── httpi/
+    ├── config.yaml
+    ├── env/
+    │   └── dev.env.yaml
+    ├── requests/
+    │   └── ping.request.yaml
+    ├── runs/
+    │   └── smoke.run.yaml
+    └── artifacts/
+        ├── secrets.yaml
+        ├── sessions/
+        └── history/
 ```
 
 | Path | Purpose |
 | --- | --- |
-| `httpi/` | Git-tracked requests, runs, envs, blocks, and body templates |
-| `.httpi/` | Local secrets, session state, locks, and captured artifacts |
+| `httpi/` | Git-tracked requests, runs, envs, blocks, body templates, and the git-ignored runtime subtree |
+| `httpi/artifacts/` | Local secrets, session state, locks, and captured request artifacts |
 
-In normal projects, `.httpi/` should stay local and untracked. The checked-in examples in this repo include a small `.httpi/` skeleton so the runtime layout is easy to inspect.
+In normal projects, `httpi/artifacts/` should stay Git-ignored apart from tracked `.gitkeep` placeholders. The checked-in examples in this repo include a small `httpi/artifacts/` skeleton so the runtime layout is easy to inspect.
 
 ## Operational properties
 
@@ -103,13 +103,18 @@ In normal projects, `.httpi/` should stay local and untracked. The checked-in ex
 
 ## Examples
 
-Public example projects live under [`examples/`](examples/README.md), and they are exercised by the automated test suite.
+All checked-in reference projects live under [`examples/`](examples/README.md), and they are exercised by the automated test suite.
 
 | Example | Best for | What it shows |
 | --- | --- | --- |
 | [`examples/getting-started`](examples/getting-started) | first project setup | one env, one request, one run |
+| [`examples/multi-env-smoke`](examples/multi-env-smoke) | environment-specific smoke checks | one run reused across `dev` and `staging` env files |
 | [`examples/pause-resume`](examples/pause-resume) | understanding the full workflow | login, secret extraction, parallel reads, pause, artifact inspection, and resume |
 | [`examples/api-key-body-file`](examples/api-key-body-file) | richer real-world request wiring | `$ENV` auth, body templates, run inputs, and step output chaining |
+| [`examples/basic-auth-crud`](examples/basic-auth-crud) | local-secret auth plus mutable APIs | basic auth, JSON bodies, and sequential CRUD |
+| [`examples/ecommerce-checkout`](examples/ecommerce-checkout) | product-style business workflows | carts, checkout, extracted IDs, and follow-up verification |
+| [`examples/incident-runbook`](examples/incident-runbook) | operator runbooks | parallel diagnostics, pause, and safe resume before mutation |
+| [`examples/failure-recovery`](examples/failure-recovery) | failure handling | failed sessions, history capture, and resume after recovery |
 
 These examples are maintained reference projects with automated coverage behind them.
 
@@ -177,7 +182,7 @@ Registered tools:
 | `No httpi/config.yaml found...` | You are outside a project root. | Run `httpi init`, move into the project directory, or pass `--project-root`. |
 | `validate` reports schema or YAML errors | A tracked file has the wrong shape or syntax. | Fix the reported file and rerun `validate`. |
 | Requests cannot connect | `baseUrl` is wrong or the service is not running. | Update `httpi/env/*.env.yaml` and retry. |
-| Secrets lookup fails | `.httpi/secrets.yaml` is missing or incomplete. | Create or update the local secret alias. |
+| Secrets lookup fails | `httpi/artifacts/secrets.yaml` is missing or incomplete. | Create or update the local secret alias. |
 | `resume` exits with code `3` | Tracked definitions changed or another process still holds the session lock. | Retry after the lock clears; if definitions drifted, start a fresh run instead of forcing resume. |
 
 ## Support

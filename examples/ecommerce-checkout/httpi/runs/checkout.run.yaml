@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/httpi/main/packages/contracts/schemas/run.schema.json
+kind: run
+title: Checkout
+env: dev
+inputs:
+  customerId: cust_launch
+  sku: sku_checkout
+  quantity: 1
+  couponCode: spring-launch
+  shippingNote: Pack carefully
+steps:
+  - kind: request
+    id: create-cart
+    uses: carts/create-cart
+
+  - kind: request
+    id: add-item
+    uses: carts/add-item
+    with:
+      cartId: "{{steps.create-cart.cartId}}"
+
+  - kind: request
+    id: checkout-order
+    uses: orders/checkout
+    with:
+      cartId: "{{steps.create-cart.cartId}}"
+
+  - kind: request
+    id: get-order
+    uses: orders/get-order
+    with:
+      orderId: "{{steps.checkout-order.orderId}}"

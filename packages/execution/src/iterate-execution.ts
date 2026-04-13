@@ -65,7 +65,10 @@ export async function executeRequestStepIterate(
     const results = evaluateAggregateAssertions(aggExpect, summary);
     const failures = results.filter((r) => !r.passed);
     if (failures.length > 0) {
-      const first = failures[0]!;
+      const [first] = failures;
+      if (!first) {
+        throw new Error("Expected at least one aggregate assertion failure.");
+      }
       const message = `Aggregate assertion failed: ${first.path} ${first.matcher} expected ${JSON.stringify(first.expected)} got ${JSON.stringify(first.actual)}.`;
       await appendSessionEvent(projectRoot, currentSession, {
         schemaVersion: currentSession.schemaVersion,

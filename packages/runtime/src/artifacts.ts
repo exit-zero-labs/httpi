@@ -1,7 +1,7 @@
 /**
  * Runtime artifact persistence and inspection helpers.
  *
- * This module owns `.httpi/responses/<sessionId>/`, including event logs,
+ * This module owns `httpi/artifacts/history/<sessionId>/`, including event logs,
  * manifests, step artifacts, and safe read-back of captured files.
  */
 import { chmod, lstat, readFile, realpath } from "node:fs/promises";
@@ -9,6 +9,7 @@ import { dirname, extname, join } from "node:path";
 import type {
   ArtifactManifest,
   ArtifactManifestEntry,
+  RequestArtifactRecord,
   SessionEvent,
   SessionRecord,
   StepArtifactSummary,
@@ -44,8 +45,7 @@ import { readSession } from "./sessions.js";
 export interface StepArtifactWriteInput {
   stepId: string;
   attempt: number;
-  requestSummary?: unknown;
-  responseMetadata?: unknown;
+  request?: RequestArtifactRecord;
   bodyText?: string | undefined;
   bodyBase64?: string | undefined;
   contentType?: string | undefined;
@@ -102,7 +102,7 @@ export async function writeStepArtifacts(
     await ensureProjectOwnedDirectory(
       projectRoot,
       attemptDirectory,
-      `The local .httpi/responses/${session.sessionId}/steps/${sanitizeFileSegment(
+      `The local httpi/artifacts/history/${session.sessionId}/steps/${sanitizeFileSegment(
         input.stepId,
       )}/attempt-${input.attempt} directory`,
     );
@@ -111,49 +111,25 @@ export async function writeStepArtifacts(
     const summary: StepArtifactSummary = {};
     const manifest = await readArtifactManifest(projectRoot, session.sessionId);
 
-    if (input.requestSummary !== undefined) {
+    if (input.request !== undefined) {
       const relativePath = buildRelativeArtifactPath(
         input.stepId,
         input.attempt,
-        "request.summary.json",
+        "request.json",
       );
       const absolutePath = resolveFromRoot(artifactRoot, relativePath);
       await writeJsonFileAtomic(
         absolutePath,
-        input.requestSummary,
+        input.request,
         runtimeFileMode,
       );
-      summary.requestSummaryPath = relativePath;
+      summary.requestPath = relativePath;
       manifest.entries.push({
         schemaVersion,
         sessionId: session.sessionId,
         stepId: input.stepId,
         attempt: input.attempt,
-        kind: "request.summary",
-        relativePath,
-        contentType: "application/json",
-      });
-    }
-
-    if (input.responseMetadata !== undefined) {
-      const relativePath = buildRelativeArtifactPath(
-        input.stepId,
-        input.attempt,
-        "response.meta.json",
-      );
-      const absolutePath = resolveFromRoot(artifactRoot, relativePath);
-      await writeJsonFileAtomic(
-        absolutePath,
-        input.responseMetadata,
-        runtimeFileMode,
-      );
-      summary.responseMetadataPath = relativePath;
-      manifest.entries.push({
-        schemaVersion,
-        sessionId: session.sessionId,
-        stepId: input.stepId,
-        attempt: input.attempt,
-        kind: "response.meta",
+        kind: "request",
         relativePath,
         contentType: "application/json",
       });
@@ -224,8 +200,8 @@ export async function writeStepArtifacts(
           "stream/chunks.jsonl",
         );
         const chunksAbsPath = resolveFromRoot(artifactRoot, chunksRelPath);
-        const chunksContent = input
-          .streamChunks!.map((c) => JSON.stringify(c))
+        const chunksContent = (input.streamChunks ?? [])
+          .map((c) => JSON.stringify(c))
           .join("\n");
         await writeFileAtomic(chunksAbsPath, `${chunksContent}\n`, {
           mode: runtimeFileMode,
@@ -289,7 +265,7 @@ export async function writeStepArtifacts(
 
     // Binary response (A3): record a manifest entry with sha256/size/path but
     // do not inline the body. Path is stored verbatim; it may live outside
-    // .httpi/responses when the user explicitly opts into a different saveTo.
+    // httpi/artifacts/history when the user explicitly opts into a different saveTo.
     if (input.binary) {
       manifest.entries.push({
         schemaVersion,
@@ -364,7 +340,7 @@ export async function readArtifact(
   }
 
   const sessionArtifactRoot = resolveFromRoot(
-    runtimePaths.responsesDir,
+    runtimePaths.historyDir,
     sessionId,
   );
   const absolutePath = resolveFromRoot(sessionArtifactRoot, relativePath);
@@ -459,7 +435,7 @@ export async function readStreamChunks(
   );
 
   const sessionArtifactRoot = resolveFromRoot(
-    runtimePaths.responsesDir,
+    runtimePaths.historyDir,
     sessionId,
   );
   const absolutePath = resolveFromRoot(sessionArtifactRoot, entry.relativePath);
@@ -522,7 +498,7 @@ async function ensureSessionArtifactRoot(
   await ensureProjectOwnedDirectory(
     projectRoot,
     sessionPaths.artifactRoot,
-    `The local .httpi/responses/${session.sessionId} directory`,
+    `The local httpi/artifacts/history/${session.sessionId} directory`,
   );
   await chmod(sessionPaths.artifactRoot, runtimeDirectoryMode);
 }

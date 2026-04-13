@@ -7,6 +7,7 @@
  */
 import type {
   CapturePolicy,
+  HttpExecutionCapture,
   HttpExecutionHooks,
   HttpExecutionResult,
   JsonValue,
@@ -21,6 +22,72 @@ import {
   exitCodes,
   HttpiError,
 } from "@exit-zero-labs/httpi-shared";
+
+export class HttpExecutionError extends HttpiError {
+  readonly capture: HttpExecutionCapture;
+
+  constructor(
+    code: string,
+    message: string,
+    options: {
+      capture: HttpExecutionCapture;
+      cause?: unknown;
+      details?: unknown;
+      exitCode?: number;
+    },
+  ) {
+    super(code, message, {
+      ...(options.cause !== undefined ? { cause: options.cause } : {}),
+      ...(options.details !== undefined ? { details: options.details } : {}),
+      ...(options.exitCode !== undefined
+        ? { exitCode: options.exitCode }
+        : {}),
+    });
+    this.name = "HttpExecutionError";
+    this.capture = options.capture;
+  }
+}
+
+export function isHttpExecutionError(error: unknown): error is HttpExecutionError {
+  return error instanceof HttpExecutionError;
+}
+
+function buildCapturedRequest(
+  request: ResolvedRequestModel,
+): HttpExecutionCapture["request"] {
+  return {
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    bodyBytes:
+      request.body?.binary?.byteLength ??
+      (request.body?.text ? Buffer.byteLength(request.body.text) : 0),
+  };
+}
+
+function buildCapturedResponse(
+  response: Response,
+  options: {
+    bodyBytes: number;
+    contentType?: string | undefined;
+    truncated: boolean;
+    bodyText?: string | undefined;
+    bodyBase64?: string | undefined;
+  },
+): HttpExecutionResult["response"] {
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    headers: Object.fromEntries(response.headers.entries()),
+    ...(options.bodyText !== undefined ? { bodyText: options.bodyText } : {}),
+    ...(options.bodyBase64 !== undefined
+      ? { bodyBase64: options.bodyBase64 }
+      : {}),
+    bodyBytes: options.bodyBytes,
+    ...(options.contentType ? { contentType: options.contentType } : {}),
+    truncated: options.truncated,
+  };
+}
 
 /**
  * Execute one resolved HTTP request and normalize the response for the engine.
@@ -71,12 +138,16 @@ export async function executeHttpRequest(
       error instanceof DOMException && error.name === "TimeoutError"
         ? "timeout"
         : "network";
-    throw new HttpiError(
+    throw new HttpExecutionError(
       "HTTP_REQUEST_FAILED",
       `HTTP request failed: ${message}`,
       {
         cause: error,
         exitCode: exitCodes.executionFailure,
+        capture: {
+          request: buildCapturedRequest(request),
+          durationMs: Math.round(performance.now() - startedAt),
+        },
         details: [
           {
             level: "error" as const,
@@ -121,28 +192,18 @@ export async function executeHttpRequest(
   const contentType = response.headers.get("content-type") ?? undefined;
   const durationMs = Math.round(performance.now() - startedAt);
   const isTextResponse = shouldTreatAsText(contentType);
+  const responseCapture = buildCapturedResponse(response, {
+    bodyBytes: responseBuffer.byteLength,
+    contentType,
+    truncated: responseBuffer.byteLength > truncatedBuffer.byteLength,
+    ...(isTextResponse
+      ? { bodyText: truncatedBuffer.toString("utf8") }
+      : { bodyBase64: truncatedBuffer.toString("base64") }),
+  });
 
   return {
-    request: {
-      method: request.method,
-      url: request.url,
-      headers: request.headers,
-      bodyBytes:
-        request.body?.binary?.byteLength ??
-        (request.body?.text ? Buffer.byteLength(request.body.text) : 0),
-    },
-    response: {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-      bodyText: isTextResponse ? truncatedBuffer.toString("utf8") : undefined,
-      bodyBase64: isTextResponse
-        ? undefined
-        : truncatedBuffer.toString("base64"),
-      bodyBytes: responseBuffer.byteLength,
-      contentType,
-      truncated: responseBuffer.byteLength > truncatedBuffer.byteLength,
-    },
+    request: buildCapturedRequest(request),
+    response: responseCapture,
     durationMs,
   };
 }
@@ -156,7 +217,10 @@ async function executeStreamingResponse(
   hooks: HttpExecutionHooks,
   abortController: AbortController,
 ): Promise<HttpExecutionResult> {
-  const streamConfig = request.streamConfig!;
+  const streamConfig = request.streamConfig;
+  if (!streamConfig) {
+    throw new Error("Streaming response execution requires a streamConfig.");
+  }
   const streamHooks = hooks.stream ?? {};
   const shouldCancel = hooks.shouldCancel;
   const chunks: StreamChunkRecord[] = [];
@@ -171,9 +235,22 @@ async function executeStreamingResponse(
 
   const body = response.body;
   if (!body) {
-    throw new HttpiError("STREAM_NO_BODY", "Response has no body to stream.", {
-      exitCode: exitCodes.executionFailure,
-    });
+    throw new HttpExecutionError(
+      "STREAM_NO_BODY",
+      "Response has no body to stream.",
+      {
+        exitCode: exitCodes.executionFailure,
+        capture: {
+          request: buildCapturedRequest(request),
+          response: buildCapturedResponse(response, {
+            bodyBytes: 0,
+            contentType: response.headers.get("content-type") ?? undefined,
+            truncated: false,
+          }),
+          durationMs: Math.round(performance.now() - startedAt),
+        },
+      },
+    );
   }
 
   const reader = body.getReader();
@@ -347,7 +424,9 @@ async function executeStreamingResponse(
             }
           });
       } else if (streamConfig.parse === "chunked-json") {
-        assembledJson = JSON.parse(assembledText!);
+        if (assembledText !== undefined) {
+          assembledJson = JSON.parse(assembledText);
+        }
       } else {
         // SSE: try to parse data fields as JSON array
         assembledJson = assembledParts
@@ -373,6 +452,28 @@ async function executeStreamingResponse(
 
   const contentType = response.headers.get("content-type") ?? undefined;
   const durationMs = Math.round(performance.now() - startedAt);
+  const streamResult: HttpExecutionResult = {
+    request: buildCapturedRequest(request),
+    response: buildCapturedResponse(response, {
+      bodyText: assembledText,
+      bodyBytes: totalBytes,
+      contentType,
+      truncated: totalBytes >= maxBytes,
+    }),
+    stream: {
+      chunks,
+      assembledText,
+      assembledJson: assembledJson as StreamAssembledLast | undefined,
+      ...(assembledLast !== undefined
+        ? { assembledLast: assembledLast as StreamAssembledLast }
+        : {}),
+      firstChunkMs,
+      maxInterChunkMs,
+      totalChunks: eventCount,
+      totalBytes,
+    },
+    durationMs,
+  };
 
   if (cancelled) {
     try {
@@ -383,11 +484,12 @@ async function executeStreamingResponse(
     } catch {
       // hook errors are non-fatal
     }
-    throw new HttpiError(
+    throw new HttpExecutionError(
       "HTTP_STREAM_CANCELLED",
       "Stream was cancelled before completion.",
       {
         exitCode: exitCodes.executionFailure,
+        capture: streamResult,
         details: [
           {
             level: "error" as const,
@@ -410,38 +512,7 @@ async function executeStreamingResponse(
     // hook errors are non-fatal
   }
 
-  return {
-    request: {
-      method: request.method,
-      url: request.url,
-      headers: request.headers,
-      bodyBytes:
-        request.body?.binary?.byteLength ??
-        (request.body?.text ? Buffer.byteLength(request.body.text) : 0),
-    },
-    response: {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-      bodyText: assembledText,
-      bodyBytes: totalBytes,
-      contentType,
-      truncated: totalBytes >= maxBytes,
-    },
-    stream: {
-      chunks,
-      assembledText,
-      assembledJson: assembledJson as StreamAssembledLast | undefined,
-      ...(assembledLast !== undefined
-        ? { assembledLast: assembledLast as StreamAssembledLast }
-        : {}),
-      firstChunkMs,
-      maxInterChunkMs,
-      totalChunks: eventCount,
-      totalBytes,
-    },
-    durationMs,
-  };
+  return streamResult;
 }
 
 /** Binary response path that streams directly to disk while hashing and truncating. */
@@ -487,10 +558,21 @@ async function executeBinaryResponse(
   const body = response.body;
   if (!body) {
     writer.end();
-    throw new HttpiError(
+    throw new HttpExecutionError(
       "BINARY_NO_BODY",
       "Response has no body to download.",
-      { exitCode: exitCodes.executionFailure },
+      {
+        exitCode: exitCodes.executionFailure,
+        capture: {
+          request: buildCapturedRequest(request),
+          response: buildCapturedResponse(response, {
+            bodyBytes: 0,
+            contentType: response.headers.get("content-type") ?? undefined,
+            truncated: false,
+          }),
+          durationMs: Math.round(performance.now() - startedAt),
+        },
+      },
     );
   }
 
@@ -540,20 +622,44 @@ async function executeBinaryResponse(
     await new Promise<void>((resolve) => writer.end(resolve));
   }
 
+  const contentType = response.headers.get("content-type") ?? undefined;
+  const durationMs = Math.round(performance.now() - startedAt);
+  const sha256Hex = hash.digest("hex");
+  const binaryResult: HttpExecutionResult = {
+    request: buildCapturedRequest(request),
+    response: buildCapturedResponse(response, {
+      bodyBytes: total,
+      contentType,
+      truncated,
+    }),
+    binary: {
+      absolutePath,
+      relativePath: request.saveTo,
+      bytes: total,
+      sha256: sha256Hex,
+      truncated,
+    },
+    durationMs,
+  };
+
   if (cancelled) {
-    throw new HttpiError(
+    throw new HttpExecutionError(
       "HTTP_STREAM_CANCELLED",
       "Binary download was cancelled before completion.",
-      { exitCode: exitCodes.executionFailure },
+      {
+        exitCode: exitCodes.executionFailure,
+        capture: binaryResult,
+      },
     );
   }
 
   if (truncated) {
-    throw new HttpiError(
+    throw new HttpExecutionError(
       "BINARY_MAXBYTES_EXCEEDED",
       `Binary response exceeded response.maxBytes=${maxBytes}.`,
       {
         exitCode: exitCodes.executionFailure,
+        capture: binaryResult,
         details: [
           {
             level: "error" as const,
@@ -566,36 +672,7 @@ async function executeBinaryResponse(
     );
   }
 
-  const contentType = response.headers.get("content-type") ?? undefined;
-  const durationMs = Math.round(performance.now() - startedAt);
-  const sha256Hex = hash.digest("hex");
-
-  return {
-    request: {
-      method: request.method,
-      url: request.url,
-      headers: request.headers,
-      bodyBytes:
-        request.body?.binary?.byteLength ??
-        (request.body?.text ? Buffer.byteLength(request.body.text) : 0),
-    },
-    response: {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-      bodyBytes: total,
-      contentType,
-      truncated: false,
-    },
-    binary: {
-      absolutePath,
-      relativePath: request.saveTo,
-      bytes: total,
-      sha256: sha256Hex,
-      truncated: false,
-    },
-    durationMs,
-  };
+  return binaryResult;
 }
 
 interface ParseResult {
