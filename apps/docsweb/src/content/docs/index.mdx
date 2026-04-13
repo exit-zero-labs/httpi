@@ -1,0 +1,50 @@
+---
+title: httpi docs
+description: File-based HTTP workflows for humans and AI agents.
+template: splash
+hero:
+  tagline: File-based HTTP workflows for humans and AI agents.
+  actions:
+    - text: Read the quickstart
+      link: /guides/quickstart/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/exit-zero-labs/httpi
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Built for repository-native API workflows
+
+<CardGrid stagger>
+  <Card
+    title="Quickstart"
+    icon="pencil"
+    href="/guides/quickstart/"
+  >
+    Install `httpi`, scaffold a project, and run your first tracked workflow.
+  </Card>
+  <Card
+    title="Agent guide"
+    icon="setting"
+    href="/guides/agent-guide/"
+  >
+    Follow the recommended validation, inspection, and resume loop for coding agents.
+  </Card>
+  <Card
+    title="Technical architecture"
+    icon="open-book"
+    href="/reference/technical-architecture/"
+  >
+    See the package boundaries, runtime model, and on-disk project structure.
+  </Card>
+  <Card
+    title="Examples"
+    icon="open-book"
+    href="https://github.com/exit-zero-labs/httpi/tree/main/examples"
+  >
+    Browse the checked-in example projects that back the automated test suite.
+  </Card>
+</CardGrid>

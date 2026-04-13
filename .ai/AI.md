@@ -75,7 +75,7 @@ pnpm build
 ## Repository map
 
 ```text
-apps/        CLI and MCP entrypoints
+apps/        application entrypoints (CLI, MCP adapter, docs site)
 packages/    contracts, definitions, execution, runtime, http, shared
 docs/        product and architecture docs
 testing/     fixtures, flows, and judge-oriented validation assets

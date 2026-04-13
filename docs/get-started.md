@@ -6,7 +6,7 @@ This guide is for contributors and maintainers working inside the `httpi` monore
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 20.3.0 or newer
 - `pnpm` 10.x
 
 ## Install and verify
@@ -52,6 +52,7 @@ node apps/cli/dist/index.js explain variables --run smoke --step login --project
 | Path | Purpose |
 | --- | --- |
 | `apps/cli` | thin CLI + MCP adapter published as `@exit-zero-labs/httpi` (bin: `httpi`; `httpi mcp` starts the stdio server) |
+| `apps/docsweb` | Starlight docs site intended for `httpi.exitzerolabs.com` |
 | `packages/` | shared contracts, definition loading, execution, runtime, HTTP, and utilities |
 | `examples/` | public example projects that double as canonical test inputs |
 | `testing/httpi/` | unit, example, E2E, publish, flow, and judge-oriented validation assets |

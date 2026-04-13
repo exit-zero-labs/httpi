@@ -1,0 +1,40 @@
+{
+  "name": "@exit-zero-labs/httpi-docsweb",
+  "private": true,
+  "type": "module",
+  "version": "0.3.0",
+  "description": "Starlight docs site for httpi.",
+  "license": "MIT",
+  "author": "Exit Zero Labs LLC",
+  "engines": {
+    "node": "18.20.8 || ^20.3.0 || >=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/exit-zero-labs/httpi.git",
+    "directory": "apps/docsweb"
+  },
+  "homepage": "https://httpi.exitzerolabs.com",
+  "scripts": {
+    "sync:content": "node ./scripts/sync-content.mjs",
+    "predev": "pnpm run sync:content",
+    "dev": "astro dev",
+    "prestart": "pnpm run sync:content",
+    "start": "astro dev",
+    "prebuild": "pnpm run sync:content",
+    "build": "astro build",
+    "pretypecheck": "pnpm run sync:content",
+    "typecheck": "astro check",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.37.7",
+    "astro": "5.16.0",
+    "sharp": "0.34.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.8",
+    "typescript": "5.9.3"
+  }
+}

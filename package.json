@@ -7,7 +7,7 @@
   "author": "Exit Zero Labs LLC",
   "packageManager": "pnpm@10.27.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.3.0"
   },
   "repository": {
     "type": "git",

@@ -103,6 +103,7 @@ The key design constraint is that compilation, execution, and persistence each h
 | Path                   | Responsibility                                                          |
 | ---------------------- | ----------------------------------------------------------------------- |
 | `apps/cli`             | Single published bin — `httpi ...` for humans, `httpi mcp` stdio MCP server for agents |
+| `apps/docsweb`         | Starlight-based docs site for hosting product and contributor documentation |
 | `packages/contracts`   | Cross-boundary schemas, DTOs, events, result payloads, and YAML schemas |
 | `packages/definitions` | Project discovery, YAML loading, validation, path-derived identity      |
 | `packages/http`        | Request execution, body encoding, transport concerns                    |
