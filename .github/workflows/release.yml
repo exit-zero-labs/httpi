@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
@@ -16,8 +13,8 @@ permissions:
 
 jobs:
   release:
-    # Skip the bot's own version-bump push so we don't loop.
-    if: github.actor != 'github-actions[bot]'
+    # Release is manual-only and should only run from main.
+    if: github.actor != 'github-actions[bot]' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:

@@ -69,7 +69,8 @@ For changes that should ship to npm:
 
 1. run `pnpm changeset` and describe the user-visible package change
 2. merge the PR to `main`
-3. `.github/workflows/release.yml` picks up the pending changeset, bumps the version, commits it as `github-actions[bot]`, and publishes through npm trusted publishing (OIDC) automatically
+3. manually run `.github/workflows/release.yml` from GitHub Actions on `main`
+4. the workflow applies pending changesets, bumps the version, commits it as `github-actions[bot]`, and publishes the unpublished package version to npm
 
 Only `@exit-zero-labs/httpi` is published to npm. The shared `packages/*` workspace modules stay private implementation-detail packages. The CLI bin exposes both the `httpi` command surface and the `httpi mcp` stdio MCP server from a single binary.
 
