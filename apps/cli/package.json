@@ -1,6 +1,6 @@
 {
   "name": "@exit-zero-labs/httpi",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "httpi CLI and MCP server. `httpi` for humans and scripts, `httpi mcp` for agents.",
   "type": "module",
   "license": "MIT",
