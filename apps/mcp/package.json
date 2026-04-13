@@ -1,6 +1,6 @@
 {
   "name": "@exit-zero-labs/httpi-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP entrypoint for httpi.",
   "type": "module",
   "license": "MIT",
