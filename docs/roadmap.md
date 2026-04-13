@@ -48,7 +48,7 @@ The current priority is to make the existing v0 easier to adopt and easier to tr
 
 Even as the roadmap expands, the core architectural constraints stay the same:
 
-- keep `apps/cli` and `apps/mcp` thin
+- keep `apps/cli` thin — both the CLI and the `httpi mcp` stdio server are pure adapters over the shared engine
 - keep tracked request intent in `httpi/` and runtime state in `.httpi/`
 - keep definitions pure data with no hidden scripting model
 - prefer explicit, inspectable behavior over magical convenience

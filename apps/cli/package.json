@@ -1,7 +1,7 @@
 {
   "name": "@exit-zero-labs/httpi",
   "version": "0.1.2",
-  "description": "CLI entrypoint for httpi.",
+  "description": "httpi CLI and MCP server. `httpi` for humans and scripts, `httpi mcp` for agents.",
   "type": "module",
   "license": "MIT",
   "author": "Exit Zero Labs LLC",
@@ -58,6 +58,8 @@
     "@exit-zero-labs/httpi-contracts": "workspace:*",
     "@exit-zero-labs/httpi-execution": "workspace:*",
     "@exit-zero-labs/httpi-shared": "workspace:*",
-    "yaml": "^2.8.3"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "yaml": "^2.8.3",
+    "zod": "^4.3.6"
   }
 }

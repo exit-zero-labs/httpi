@@ -20,7 +20,9 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const cliEntrypoint = resolve(repoRoot, "apps/cli/dist/index.js");
-const mcpEntrypoint = resolve(repoRoot, "apps/mcp/dist/index.js");
+// MCP is now a subcommand of the CLI; spawn `node apps/cli/dist/index.js mcp`.
+const mcpEntrypoint = cliEntrypoint;
+const mcpEntrypointArgs = [mcpEntrypoint, "mcp"];
 const fixtureProjectRoot = resolve(repoRoot, "examples/pause-resume");
 
 test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, and redacts artifacts", async () => {
@@ -263,12 +265,9 @@ test("CLI init scaffolds schema hints and preserves documented validation exits"
   }
 });
 
-test("CLI and MCP expose help and version discovery surfaces", async () => {
+test("CLI exposes help and version discovery, including the `httpi mcp` subcommand", async () => {
   const cliManifest = JSON.parse(
     await readFile(join(repoRoot, "apps", "cli", "package.json"), "utf8"),
-  );
-  const mcpManifest = JSON.parse(
-    await readFile(join(repoRoot, "apps", "mcp", "package.json"), "utf8"),
   );
 
   const cliVersion = await runNodeProcess(process.execPath, [
@@ -285,21 +284,8 @@ test("CLI and MCP expose help and version discovery surfaces", async () => {
   assert.equal(cliHelp.code, 0, cliHelp.stderr);
   assert.match(cliHelp.stdout, /httpi --version/);
   assert.match(cliHelp.stdout, /List targets:/);
-
-  const mcpVersion = await runNodeProcess(process.execPath, [
-    mcpEntrypoint,
-    "--version",
-  ]);
-  assert.equal(mcpVersion.code, 0, mcpVersion.stderr);
-  assert.equal(mcpVersion.stdout.trim(), mcpManifest.version);
-
-  const mcpHelp = await runNodeProcess(process.execPath, [
-    mcpEntrypoint,
-    "--help",
-  ]);
-  assert.equal(mcpHelp.code, 0, mcpHelp.stderr);
-  assert.match(mcpHelp.stdout, /run_definition/);
-  assert.match(mcpHelp.stdout, /docs\/agent-guide\.md/);
+  // MCP is now a subcommand of the CLI; help must advertise it.
+  assert.match(cliHelp.stdout, /httpi mcp/);
 });
 
 test("CLI and MCP pin documented validation and runtime error contracts", async () => {
@@ -311,7 +297,7 @@ test("CLI and MCP pin documented validation and runtime error contracts", async 
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -972,7 +958,7 @@ test("CLI and MCP surface body-file template diagnostics with file locations", a
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -1063,7 +1049,7 @@ test("CLI and MCP surface missing body-file diagnostics with file locations", as
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -1150,7 +1136,7 @@ test("CLI and MCP surface nested JSON body diagnostics with exact paths", async 
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -1585,7 +1571,7 @@ test("CLI and MCP surface assertion diagnostics with exact request locations", a
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -1682,7 +1668,7 @@ test("MCP resume_session exposes structured drift diagnostics", async () => {
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -1877,7 +1863,7 @@ test("MCP exposes the documented core tools over stdio", async () => {
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",
@@ -2571,7 +2557,7 @@ test("CLI and MCP surface invalid timeout diagnostics with source locations", as
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [mcpEntrypoint],
+    args: mcpEntrypointArgs,
     cwd: repoRoot,
     env: process.env,
     stderr: "pipe",

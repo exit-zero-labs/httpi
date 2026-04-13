@@ -2,7 +2,6 @@
   "files": [],
   "references": [
     { "path": "./apps/cli" },
-    { "path": "./apps/mcp" },
     { "path": "./packages/contracts" },
     { "path": "./packages/definitions" },
     { "path": "./packages/execution" },

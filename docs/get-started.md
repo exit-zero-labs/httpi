@@ -51,8 +51,7 @@ node apps/cli/dist/index.js explain variables --run smoke --step login --project
 
 | Path | Purpose |
 | --- | --- |
-| `apps/cli` | thin CLI adapter published as `@exit-zero-labs/httpi` |
-| `apps/mcp` | thin MCP stdio adapter published as `@exit-zero-labs/httpi-mcp` |
+| `apps/cli` | thin CLI + MCP adapter published as `@exit-zero-labs/httpi` (bin: `httpi`; `httpi mcp` starts the stdio server) |
 | `packages/` | shared contracts, definition loading, execution, runtime, HTTP, and utilities |
 | `examples/` | public example projects that double as canonical test inputs |
 | `testing/httpi/` | unit, example, E2E, publish, flow, and judge-oriented validation assets |
@@ -69,10 +68,9 @@ The public examples are part of the product surface, not throwaway fixtures.
 
 ## Release-sensitive notes
 
-Only the CLI and MCP adapters publish to npm:
+Only the unified CLI package publishes to npm:
 
-- `@exit-zero-labs/httpi`
-- `@exit-zero-labs/httpi-mcp`
+- `@exit-zero-labs/httpi` (bin: `httpi`; exposes both the CLI surface and the `httpi mcp` stdio MCP server)
 
 When a change affects published behavior, packaging, or install-time documentation:
 

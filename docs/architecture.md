@@ -53,11 +53,9 @@ The architecture is built around four constraints:
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ Interfaces                                                   │
-│  apps/cli                apps/mcp                │
-└──────────────────────┬──────────────────────┬────────────────┘
-                       │                      │
-                       └──────────┬───────────┘
-                                  ▼
+│  apps/cli  (`httpi ...` + `httpi mcp` stdio subcommand)      │
+└──────────────────────────────┬───────────────────────────────┘
+                               ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Shared engine packages                                       │
 │                                                              │
@@ -81,8 +79,7 @@ The architecture is built around four constraints:
 
 | Path                   | Responsibility                                                          |
 | ---------------------- | ----------------------------------------------------------------------- |
-| `apps/cli`             | Human-facing CLI entrypoint, console UX, exit codes                     |
-| `apps/mcp`             | MCP server entrypoint and tool adapters                                 |
+| `apps/cli`             | Single published bin — `httpi ...` for humans, `httpi mcp` stdio MCP server for agents |
 | `packages/contracts`   | Cross-boundary schemas, DTOs, events, result payloads, and YAML schemas |
 | `packages/definitions` | Project discovery, YAML loading, validation, path-derived identity      |
 | `packages/http`        | Request execution, body encoding, transport concerns                    |
@@ -655,8 +652,7 @@ The architecture is intentionally staged so contributors can build it incrementa
 3. `packages/http`
 4. `packages/runtime`
 5. `packages/execution`
-6. `apps/cli`
-7. `apps/mcp`
-8. `testing/httpi`
+6. `apps/cli` (ships both the `httpi` CLI and the `httpi mcp` subcommand)
+7. `testing/httpi`
 
 The detailed phase-by-phase plan lives in [`roadmap.md`](roadmap.md) and should stay aligned with the current implementation rather than drift into a separate design universe.

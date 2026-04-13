@@ -56,6 +56,14 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   const stepId = parsedArgs.flags.step?.[0];
   const overrides = parseInputs(parsedArgs.flags.input ?? []);
 
+  if (command === "mcp") {
+    // Lazy-import so CLI users who never touch MCP don't pay the cost of
+    // parsing @modelcontextprotocol/sdk on every `httpi` invocation.
+    const { startMcpServer } = await import("./mcp.js");
+    await startMcpServer();
+    return exitCodes.success;
+  }
+
   if (command === "init") {
     const result = await initProject(projectRoot ?? process.cwd());
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -398,6 +406,7 @@ Usage:
   httpi artifacts list <sessionId> [--step <id>] [--project-root <path>]
   httpi artifacts read <sessionId> <relativePath> [--project-root <path>]
   httpi explain variables (--request <id> | --run <id>) [--step <id>] [--env <id>] [--input key=value]
+  httpi mcp                                       (start the stdio MCP server)
 
 List targets:
   requests   list tracked request definitions

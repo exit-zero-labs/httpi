@@ -5,10 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const publishDirectories = [
-  join(repoRoot, "apps/cli/publish"),
-  join(repoRoot, "apps/mcp/publish"),
-];
+const publishDirectories = [join(repoRoot, "apps/cli/publish")];
 const extraArgs = process.argv.slice(2).filter((argument) => argument !== "--");
 const isDryRun = extraArgs.includes("--dry-run");
 

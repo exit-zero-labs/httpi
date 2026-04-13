@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { isDiagnostic } from "@exit-zero-labs/httpi-contracts";
 import {
   cancelSessionRun,
@@ -555,67 +553,3 @@ function buildToolErrorPayload(
     message,
   };
 }
-
-function printUsage(): void {
-  const usage = `httpi-mcp
-
-Usage:
-  httpi-mcp
-  httpi-mcp --help
-  httpi-mcp --version
-
-Transport:
-  stdio
-
-Core tools:
-  list_definitions   Discover requests, runs, envs, and sessions.
-  validate_project   Validate tracked definitions and references.
-  describe_request   Resolve one request without executing it.
-  describe_run       Compile one run and show its step graph.
-  run_definition     Execute a request or run (provide requestId or runId, not both).
-  resume_session     Resume a paused or failed session after drift checks.
-  get_session_state  Read persisted session state and drift details.
-  list_artifacts     List captured artifacts for a session or one step.
-  read_artifact      Read one captured artifact with redaction applied.
-  get_stream_chunks  Read captured stream chunks (chunks.jsonl) for a session step, with optional range.
-  cancel_session     Request cancellation of a session; transitions runnable sessions to 'interrupted'.
-  explain_variables  Show effective values and provenance for a request or run step.
-
-Docs:
-  - README.md in the repository root for the end-to-end workflow
-  - docs/agent-guide.md for agent-specific usage patterns
-`;
-
-  process.stdout.write(`${usage}\n`);
-}
-
-async function main(): Promise<void> {
-  try {
-    const argv = process.argv.slice(2);
-    if (argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
-      printUsage();
-      return;
-    }
-
-    if (
-      (argv.length === 1 && argv[0] === "version") ||
-      argv[0] === "--version" ||
-      argv[0] === "-v"
-    ) {
-      process.stdout.write(`${packageJson.version}\n`);
-      return;
-    }
-
-    await startMcpServer();
-  } catch (error) {
-    if (error instanceof HttpiError) {
-      process.stderr.write(`${error.message}\n`);
-      process.exitCode = error.exitCode;
-      return;
-    }
-
-    throw error;
-  }
-}
-
-void main();

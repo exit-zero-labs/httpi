@@ -41,22 +41,6 @@ importers:
       '@exit-zero-labs/httpi-shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
-    publishDirectory: publish
-
-  apps/mcp:
-    dependencies:
-      '@exit-zero-labs/httpi-contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@exit-zero-labs/httpi-execution':
-        specifier: workspace:*
-        version: link:../../packages/execution
-      '@exit-zero-labs/httpi-shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)

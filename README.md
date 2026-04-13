@@ -3,36 +3,28 @@
 <p>
   <a href="https://github.com/exit-zero-labs/httpi/actions/workflows/check.yml"><img alt="Check" src="https://img.shields.io/github/actions/workflow/status/exit-zero-labs/httpi/check.yml?branch=main&label=check&style=flat-square"></a>
   <a href="https://github.com/exit-zero-labs/httpi/actions/workflows/ci.yml"><img alt="Node compatibility" src="https://img.shields.io/github/actions/workflow/status/exit-zero-labs/httpi/ci.yml?branch=main&label=node%20compatibility&style=flat-square"></a>
-  <a href="https://www.npmjs.com/package/@exit-zero-labs/httpi"><img alt="npm CLI version" src="https://img.shields.io/npm/v/%40exit-zero-labs%2Fhttpi?label=cli&style=flat-square"></a>
-  <a href="https://www.npmjs.com/package/@exit-zero-labs/httpi-mcp"><img alt="npm MCP version" src="https://img.shields.io/npm/v/%40exit-zero-labs%2Fhttpi-mcp?label=mcp&style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@exit-zero-labs/httpi"><img alt="npm version" src="https://img.shields.io/npm/v/%40exit-zero-labs%2Fhttpi?label=npm&style=flat-square"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/exit-zero-labs/httpi?style=flat-square"></a>
 </p>
 
-`httpi` is a file-based HTTP workflow runner for repositories. It keeps tracked request intent in `httpi/`, local runtime state in `.httpi/`, and exposes the same execution model through a CLI and an MCP adapter.
+`httpi` is a file-based HTTP workflow runner for repositories. It keeps tracked request intent in `httpi/`, local runtime state in `.httpi/`, and exposes the same execution model through a CLI and an MCP server — both shipped in a single binary.
 
 Use it when API validation should live next to the code it exercises, with explicit runs, persisted artifacts, and pause/resume semantics that both humans and AI agents can inspect.
 
 ## Install
 
-The install surface is intentionally small:
-
-| Package | Surface | Install |
-| --- | --- | --- |
-| `@exit-zero-labs/httpi` | CLI | `npm install -g @exit-zero-labs/httpi` |
-| `@exit-zero-labs/httpi-mcp` | MCP stdio adapter | `npm install -g @exit-zero-labs/httpi-mcp` |
-
-Start with the CLI:
+One package, two surfaces:
 
 ```bash
 npm install -g @exit-zero-labs/httpi
-mkdir demo-api && cd demo-api
-httpi init
 ```
 
-To use the same project model from an MCP client:
+- `httpi` — the CLI for humans and scripts.
+- `httpi mcp` — the stdio MCP server for agents (same engine, same redaction, same artifacts).
 
 ```bash
-npm install -g @exit-zero-labs/httpi-mcp
+mkdir demo-api && cd demo-api
+httpi init
 ```
 
 ## What it solves
@@ -135,31 +127,48 @@ These examples are maintained reference projects with automated coverage behind 
 | inspect captured request/response evidence | `artifacts list` / `artifacts read` |
 | continue a paused or failed workflow | `resume` |
 
-## MCP adapter
+## MCP server
 
-`httpi-mcp` exposes the same project model over stdio, so an MCP client can discover definitions, validate, describe, run, inspect artifacts, and resume with the same semantics as the CLI.
+`httpi mcp` starts a stdio MCP server that exposes the same project model as the CLI — same engine path, same redaction, same artifacts. Point any MCP client (Claude Desktop, Claude Code, Cursor, etc.) at the `httpi` bin with `mcp` as the first argument:
 
 ```json
 {
-  "command": "httpi-mcp",
-  "args": []
+  "mcpServers": {
+    "httpi": {
+      "command": "httpi",
+      "args": ["mcp"]
+    }
+  }
 }
 ```
 
-The core tool set mirrors the CLI flow:
+If you don't want a global install, use `npx`:
+
+```json
+{
+  "mcpServers": {
+    "httpi": {
+      "command": "npx",
+      "args": ["-y", "@exit-zero-labs/httpi", "mcp"]
+    }
+  }
+}
+```
+
+Registered tools:
 
 - `list_definitions`
 - `validate_project`
 - `describe_request`
 - `describe_run`
-- `run_definition`
+- `run_definition` — accepts exactly one of `requestId` or `runId`
+- `resume_session`
 - `get_session_state`
 - `list_artifacts`
 - `read_artifact`
+- `get_stream_chunks`
+- `cancel_session`
 - `explain_variables`
-- `resume_session`
-
-`run_definition` accepts exactly one of `requestId` or `runId`.
 
 ## Troubleshooting
 

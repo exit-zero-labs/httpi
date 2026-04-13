@@ -43,8 +43,8 @@ pnpm build
    - `httpi/` is the tracked source of truth
    - `.httpi/` is local runtime state and must stay Git-ignored
 
-2. **Thin interface adapters**
-   - `apps/cli` and `apps/mcp` stay thin
+2. **Thin interface adapter**
+   - `apps/cli` stays thin — it ships the `httpi` CLI bin plus the `httpi mcp` stdio MCP server from a single package
    - execution logic belongs in shared packages
 
 3. **Request-first authoring**

@@ -8,19 +8,12 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
-test("published CLI and MCP packages are packable and bootable", async () => {
+test("published CLI package is packable and bootable (CLI + MCP subcommand)", async () => {
   await assertPublishablePackage({
     directory: join(repoRoot, "apps/cli/publish"),
     expectedName: "@exit-zero-labs/httpi",
     smokeArgs: ["dist/index.js", "--version"],
     smokeFromManifestVersion: true,
-  });
-
-  await assertPublishablePackage({
-    directory: join(repoRoot, "apps/mcp/publish"),
-    expectedName: "@exit-zero-labs/httpi-mcp",
-    smokeArgs: ["dist/index.js", "--help"],
-    smokePattern: /run_definition/,
   });
 });
 
