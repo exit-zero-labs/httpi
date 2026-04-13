@@ -10,7 +10,7 @@ import {
   redactArtifactText,
   writeStepArtifacts,
 } from "@exit-zero-labs/httpi-runtime";
-import { redactHeaders } from "@exit-zero-labs/httpi-shared";
+import { redactHeaders, redactJsonValue } from "@exit-zero-labs/httpi-shared";
 
 export async function maybeWriteRequestArtifacts(
   projectRoot: string,
@@ -73,10 +73,12 @@ export async function maybeWriteRequestArtifacts(
     }
   }
 
-  // Stream artifacts — redact chunk previews before writing
+  // Stream artifacts — redact chunk previews and the assembled JSON before
+  // writing. Previously assembledJson bypassed redaction; a secret embedded
+  // inside a streamed JSON field would leak into assembled.json on disk.
   let streamChunks = exchange.stream?.chunks;
   let streamAssembledText = exchange.stream?.assembledText;
-  const streamAssembledJson = exchange.stream?.assembledJson;
+  let streamAssembledJson = exchange.stream?.assembledJson;
   if (streamChunks && secretValues.length > 0) {
     streamChunks = streamChunks.map((c) => ({
       ...c,
@@ -85,6 +87,9 @@ export async function maybeWriteRequestArtifacts(
   }
   if (streamAssembledText && secretValues.length > 0) {
     streamAssembledText = redactArtifactText(streamAssembledText, secretValues);
+  }
+  if (streamAssembledJson !== undefined && secretValues.length > 0) {
+    streamAssembledJson = redactJsonValue(streamAssembledJson, secretValues);
   }
 
   return writeStepArtifacts(projectRoot, session, {
@@ -98,5 +103,6 @@ export async function maybeWriteRequestArtifacts(
     streamChunks,
     streamAssembledText,
     streamAssembledJson,
+    ...(exchange.binary ? { binary: exchange.binary } : {}),
   });
 }

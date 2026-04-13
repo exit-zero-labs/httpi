@@ -90,6 +90,12 @@ export async function materializeRequest(
       ]),
       responseMode: step.request.response?.mode,
       streamConfig: step.request.response?.stream,
+      ...(step.request.response?.saveTo
+        ? { saveTo: step.request.response.saveTo }
+        : {}),
+      ...(step.request.response?.maxBytes !== undefined
+        ? { responseMaxBytes: step.request.response.maxBytes }
+        : {}),
     },
     variables: collectVariableExplanations(context),
   };

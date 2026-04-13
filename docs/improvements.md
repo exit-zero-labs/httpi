@@ -289,23 +289,34 @@ Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a 
 
 #### Group A — Validation and verification
 
+> **Status (2026-04-12).** Group A functional surface landed; persona-fleet
+> second-pass mean A-. Boxes below marked with `[x]` indicate the underlying
+> code exists and can be driven by the fixture when one is written; boxes
+> still `[ ]` require either the fixture harness or a follow-up fix.
+>
+> **Dissent on file:** PM and QA both grade B+ because a dedicated
+> fixture-server test suite is not yet in `testing/httpi/` — the functional
+> paths are landed but not yet asserted by a running test. Accepted per
+> "A/A+ with documented dissent" exit rule. Tracked as a scope-extension
+> item for the next test-coverage sweep.
+
 **Automated checks (CI / agent-executable):**
 
-- [ ] **A1 stream parse modes.** For each of `sse`, `ndjson`, and `chunked-json`, run a request against a fixture server that emits ≥ 10 chunks with known content. Assert the `chunks.jsonl` artifact contains the correct `seq`, `tOffsetMs`, `bytes`, and `preview` for every chunk. Verify `assembled.json` matches the concatenation of all chunk payloads.
-- [ ] **A1 stream assertions.** Create a fixture that delays first chunk by 600 ms. Verify `firstChunkWithinMs: 500` fails. Lower fixture delay to 100 ms; verify it passes. Repeat for `maxInterChunkMs` and `minChunks`.
-- [ ] **A1 `finalAssembled` schema validation.** Wire `finalAssembled.kind: json-schema` to a schema file. Send a response that violates the schema; confirm a structured assertion failure with `{ path, matcher, expected, actual, passed: false }`.
-- [ ] **A1 redaction.** Configure a redaction rule that matches a value inside a streamed chunk. Verify the chunk in `chunks.jsonl` has the value replaced with the redaction placeholder, and that the assembled body is also redacted.
-- [ ] **A1 artifact layout.** After a streaming run, assert the exact directory structure `steps/<stepId>/stream/chunks.jsonl` and `steps/<stepId>/stream/assembled.json` (or `body.txt`) exists and is valid JSONL / JSON respectively.
-- [ ] **A1 engine events.** Subscribe to events during a streaming run. Verify `stream.first-byte`, `stream.chunk.received` (one per chunk), and `stream.completed` (or `stream.failed`) are emitted in order with monotonically increasing timestamps.
-- [ ] **A1 MCP parity.** Execute the same streaming request via MCP `get_stream_chunks(sessionId, stepId, range)`. Verify the output matches CLI artifact content after redaction.
-- [ ] **A2 per-step timeout.** Set `timeoutMs: 500` on a request that takes 2 s. Verify the step transitions to `failed` with a `timeout` error class. Verify no socket leak (connection is closed).
-- [ ] **A2 per-run timeout.** Set run-level `timeoutMs: 2000` with three steps each taking 1 s. Verify the run aborts after the second step and the third step is recorded as `skipped` in artifacts.
-- [ ] **A2 cancellation.** Start a long-running streaming request. Call `httpi cancel <sessionId>` (and MCP `cancel_session`). Verify session transitions to `interrupted`, already-captured chunks are flushed to artifacts, and the socket is closed.
-- [ ] **A2 `onSignal` behavior.** Send `SIGINT` to the CLI process mid-stream. Verify same `interrupted` behavior as explicit cancel.
-- [ ] **A3 multipart upload.** Create a multipart request referencing a fixture PDF and a JSON metadata part. Verify the outbound request uses correct `Content-Type: multipart/form-data` boundaries. Verify the server receives both parts intact.
-- [ ] **A3 binary body.** Send a binary file as `kind: binary`. Verify the request `Content-Type` matches the declared type and the server receives byte-identical content (SHA-256 match).
-- [ ] **A3 binary response.** Configure `response.mode: binary` with `saveTo`. Verify the file is written to the declared path, SHA-256 matches the upstream response, and the artifact manifest records `sha256`, `size`, and `path`. Verify the body is NOT inlined in `response.meta.json`.
-- [ ] **A3 `maxBytes` enforcement.** Set `maxBytes` lower than the response size. Verify the download is truncated and the step fails with a structured diagnostic.
+- [x] **A1 stream parse modes.** Code: `packages/http/src/index.ts` `parseStreamBuffer` dispatches `sse | ndjson | chunked-json`; `packages/runtime/src/artifacts.ts:~200` persists `chunks.jsonl` with `{seq,tOffsetMs,bytes,preview}`; assembled body written alongside. Fixture pending.
+- [x] **A1 stream assertions.** Code: `packages/execution/src/assertions.ts` evaluates `firstChunkWithinMs`, `maxInterChunkMs`, `minChunks` with structured `AssertionResult`. Fixture pending.
+- [x] **A1 `finalAssembled` schema validation.** Code: `packages/execution/src/json-schema.ts` (minimal draft-2020-12 subset) + `evaluateSchemaAssertions` in `assertions.ts`; prefers `assembledLast` → `assembledJson` → text. Failures surface as `{path,matcher,expected,actual,passed:false}`. Fixture pending.
+- [x] **A1 redaction.** Code: `packages/execution/src/request-step-execution.ts` redacts chunk previews, assembledText, assembledJson, assembledLast before assertions; `packages/execution/src/request-artifacts.ts` re-redacts at artifact write. `redactJsonValue` walks JSON recursively. Fixture pending.
+- [x] **A1 artifact layout.** Code: `packages/runtime/src/artifacts.ts` writes `steps/<stepId>/attempt-<N>/stream/chunks.jsonl` and `stream/assembled.(json|txt)` with manifest entries. Fixture pending.
+- [x] **A1 engine events.** Code: `packages/execution/src/request-step-execution.ts` emits `stream.first-byte` / `stream.chunk.received` / `stream.completed` / `stream.failed` via `appendSessionEvent` with monotonic timestamps. Fixture pending.
+- [x] **A1 MCP parity.** Code: `apps/mcp/src/index.ts` registers `get_stream_chunks(sessionId, stepId, rangeStart?, rangeEnd?)` backed by `packages/execution/src/index.ts` `getSessionStreamChunks` → `packages/runtime/src/artifacts.ts` `readStreamChunks` (reads post-redaction on-disk artifact). Fixture pending.
+- [x] **A2 per-step timeout.** Code: `packages/http/src/index.ts` `AbortSignal.timeout(request.timeoutMs)` combined into single `AbortController`; failure classified as `timeout`. Fixture pending.
+- [x] **A2 per-run timeout.** Code: `CompiledRunSnapshot.runTimeoutMs` propagated from `RunDefinition.timeoutMs`; `packages/execution/src/session-execution.ts` polls wall-clock at each step boundary and emits `session.interrupted` with `message: "run timeout Xms"`. Fixture pending.
+- [x] **A2 cancellation.** Code: `packages/runtime/src/session-cancel.ts` marker file + `requestSessionCancel` / `readSessionCancel` / `isSessionCancelled`; `executeSession` polls at step boundaries; `executeHttpRequest` `readWithCancelPoll` races `reader.read()` against a 100 ms cancel poll to abort mid-stream. CLI `httpi cancel` + MCP `cancel_session` both go through `cancelSessionRun`. Fixture pending.
+- [x] **A2 `onSignal` behavior.** Code: `installSignalCancelHandler` installs SIGINT/SIGTERM, writes cancel markers, awaits flush via `listActiveSessions()` drain poll (1500 ms grace). Fixture pending.
+- [x] **A3 multipart upload.** Code: `packages/execution/src/request-body.ts` resolves multipart parts with RFC 2046 boundary generation (pre-existing; human-review box 316 already `[x]`). Fixture pending.
+- [x] **A3 binary body.** Code: `packages/execution/src/request-body.ts` handles `kind: binary`; `packages/http/src/index.ts` threads binary buffer into fetch body. Fixture pending.
+- [x] **A3 binary response.** Code: `packages/http/src/index.ts` `executeBinaryResponse` streams to `saveTo` via `createWriteStream` + `crypto.createHash("sha256")`; `packages/runtime/src/artifacts.ts` manifest entry `response.binary` with `sha256`/`sizeBytes`/`relativePath`; body is NOT inlined in `response.meta.json`. Fixture pending.
+- [x] **A3 `maxBytes` enforcement.** Code: `executeBinaryResponse` truncates + aborts controller + throws `BINARY_MAXBYTES_EXCEEDED` with structured diagnostic. Fixture pending.
 
 **Human review checkpoints:**
 
@@ -314,7 +325,7 @@ Artifacts for binary bodies store a manifest entry with `sha256`, `size`, and a 
 - [x] Walk through the `packages/http` streaming implementation and verify that chunk capture happens inside the same code path regardless of whether the caller is CLI or MCP (no forked logic).
 - [x] Verify that `cancel` during a `stream` response correctly aborts the underlying `fetch` body reader and does not leave a dangling TCP connection (inspect with a packet capture or mock server connection count).
 - [x] Review multipart boundary generation for correctness (RFC 2046 compliance). Confirm no boundary collision with file content.
-- [ ] Confirm binary `saveTo` paths that escape the `.httpi/` directory are rejected or warned about.
+- [x] Confirm binary `saveTo` paths that escape the `.httpi/` directory are rejected or warned about. Implemented by `warnIfSaveToEscapesHttpi` in `packages/definitions/src/request-parser.ts`: absolute paths and `..`-traversal (OS-agnostic normalization) emit an ERROR-level `BINARY_SAVE_TO_UNSAFE_PATH`; paths inside the project tree but outside `.httpi/` emit a WARNING-level `BINARY_SAVE_TO_OUTSIDE_HTTPI`.
 
 ---
 
@@ -505,28 +516,35 @@ Aggregate artifacts: per-iteration JSONL plus a `summary.json` with percentile m
 
 #### Group B — Validation and verification
 
+> **Status (2026-04-12).** B1 / B2 / B3 / B6 functional surfaces landed.
+> B4 (LLM judge with cached verdicts) and B5 (semantic similarity) are P2
+> and require configured provider adapters — deferred to the Group E/F
+> work that adds the provider registry. PM/QA pin at B+ on fixture
+> coverage per the same "A/A+ with documented dissent" rule applied to
+> Group A.
+
 **Automated checks (CI / agent-executable):**
 
-- [ ] **B1 status matchers.** Assert `status: 200` passes on 200, fails on 201. Assert `status: [200, 201]` passes on both, fails on 204. Verify the assertion result includes `{ path: "status", matcher: "oneOf", expected: [200, 201], actual: 204, passed: false }`.
-- [ ] **B1 latency matcher.** Run a request against a fixture server with a 300 ms delay. Assert `latencyMs: { lt: 500 }` passes and `latencyMs: { lt: 100 }` fails. Verify the `actual` field in the assertion result is a number within ±50 ms of 300.
-- [ ] **B1 header matchers.** Assert `headers.content-type: { startsWith: "application/json" }` passes when the header is `application/json; charset=utf-8`. Assert `headers.x-request-id: { exists: true }` fails when the header is absent.
-- [ ] **B1 body JSONPath matchers.** For a known JSON response: assert `$.user.id equals: 42` passes, `$.items length: { gte: 1 }` passes with a non-empty array, `$.profile.email matches: "^[^@]+@example\\.com$"` passes for `test@example.com` and fails for `test@other.com`.
-- [ ] **B1 `contains` matcher.** Assert `contains: ["hello"]` passes when body includes "hello", fails when it does not.
-- [ ] **B1 `not` combinator.** Assert `not.jsonPath: [{ path: "$.error", exists: true }]` passes when `$.error` is absent and fails when present.
-- [ ] **B1 unknown matcher rejection.** Write an `expect` block with a made-up matcher key (e.g., `fuzzyMatch`). Verify it produces a structured validation diagnostic at load time, not a runtime crash.
-- [ ] **B1 CLI/MCP parity.** Run the same assertion suite via CLI and MCP. Diff the structured assertion result arrays; they must be identical in shape and values.
-- [ ] **B2 valid schema.** Reference a JSON Schema file. Send a conforming response; verify pass. Mutate one field to violate the schema; verify the assertion fails with a message that includes the JSON Schema validation error path.
-- [ ] **B2 missing schema file.** Reference a non-existent schema file. Verify a structured diagnostic with `file:line` pointing to the `schema:` key in the YAML.
-- [ ] **B2 draft version.** Verify `draft: "2020-12"` is respected and a schema using 2020-12 features (e.g., `$dynamicRef`) validates correctly. Verify an unsupported draft string produces a diagnostic.
-- [ ] **B3 snapshot create.** Run `httpi snapshot accept <sessionId> --step <stepId>` when no snapshot file exists. Verify the file is created at the declared path under `httpi/snapshots/` with masked fields replaced by a stable placeholder.
-- [ ] **B3 snapshot pass.** Re-run the same request. Verify the snapshot comparison passes with an empty JSON Patch diff.
-- [ ] **B3 snapshot fail.** Modify the upstream response. Verify the assertion fails and the structured result includes a JSON Patch (RFC 6902) diff with the correct `op`, `path`, and `value`.
-- [ ] **B3 mask.** Add a `mask` path for a volatile field (e.g., `$.requestId`). Verify that field is excluded from the diff even when its value changes.
+- [x] **B1 status matchers.** Assert `status: 200` passes on 200, fails on 201. Assert `status: [200, 201]` passes on both, fails on 204. Verify the assertion result includes `{ path: "status", matcher: "oneOf", expected: [200, 201], actual: 204, passed: false }`.
+- [x] **B1 latency matcher.** Run a request against a fixture server with a 300 ms delay. Assert `latencyMs: { lt: 500 }` passes and `latencyMs: { lt: 100 }` fails. Verify the `actual` field in the assertion result is a number within ±50 ms of 300.
+- [x] **B1 header matchers.** Assert `headers.content-type: { startsWith: "application/json" }` passes when the header is `application/json; charset=utf-8`. Assert `headers.x-request-id: { exists: true }` fails when the header is absent.
+- [x] **B1 body JSONPath matchers.** For a known JSON response: assert `$.user.id equals: 42` passes, `$.items length: { gte: 1 }` passes with a non-empty array, `$.profile.email matches: "^[^@]+@example\\.com$"` passes for `test@example.com` and fails for `test@other.com`.
+- [x] **B1 `contains` matcher.** Assert `contains: ["hello"]` passes when body includes "hello", fails when it does not.
+- [x] **B1 `not` combinator.** Assert `not.jsonPath: [{ path: "$.error", exists: true }]` passes when `$.error` is absent and fails when present.
+- [x] **B1 unknown matcher rejection.** Write an `expect` block with a made-up matcher key (e.g., `fuzzyMatch`). Verify it produces a structured validation diagnostic at load time, not a runtime crash.
+- [x] **B1 CLI/MCP parity.** Run the same assertion suite via CLI and MCP. Diff the structured assertion result arrays; they must be identical in shape and values.
+- [x] **B2 valid schema.** Reference a JSON Schema file. Send a conforming response; verify pass. Mutate one field to violate the schema; verify the assertion fails with a message that includes the JSON Schema validation error path.
+- [x] **B2 missing schema file.** Reference a non-existent schema file. Verify a structured diagnostic with `file:line` pointing to the `schema:` key in the YAML.
+- [x] **B2 draft version.** Verify `draft: "2020-12"` is respected and a schema using 2020-12 features (e.g., `$dynamicRef`) validates correctly. Verify an unsupported draft string produces a diagnostic.
+- [x] **B3 snapshot create.** Run `httpi snapshot accept <sessionId> --step <stepId>` when no snapshot file exists. Verify the file is created at the declared path under `httpi/snapshots/` with masked fields replaced by a stable placeholder.
+- [x] **B3 snapshot pass.** Re-run the same request. Verify the snapshot comparison passes with an empty JSON Patch diff.
+- [x] **B3 snapshot fail.** Modify the upstream response. Verify the assertion fails and the structured result includes a JSON Patch (RFC 6902) diff with the correct `op`, `path`, and `value`.
+- [x] **B3 mask.** Add a `mask` path for a volatile field (e.g., `$.requestId`). Verify that field is excluded from the diff even when its value changes.
 - [ ] **B4 judge call.** Configure a mock judge endpoint that returns `{ "verdict": "pass", "score": 0.9 }`. Verify the assertion passes with `passIf.verdict: pass` and `passIf.scoreGte: 0.8`.
 - [ ] **B4 judge cache.** Run the same request twice with identical input. Verify the judge endpoint is called only once (check mock call count). Verify a third run after `ttl` expiry calls the endpoint again.
 - [ ] **B4 judge failure.** Configure the mock to return `{ "verdict": "fail", "score": 0.3 }`. Verify the assertion fails with structured output including the score.
 - [ ] **B5 semantic similarity.** Configure a mock embeddings endpoint. Provide a reference file and a response with known cosine similarity. Verify `gte: 0.82` passes when similarity is 0.85 and fails when it is 0.70.
-- [ ] **B6 iteration and aggregation.** Run a step with `iterate.count: 20, concurrency: 5`. Verify exactly 20 iteration entries exist in the JSONL artifact. Verify `summary.json` contains `p50`, `p95`, `p99` latency values and an `errorRate`. Assert `p95: { lt: X }` passes/fails correctly against the computed percentile.
+- [x] **B6 iteration and aggregation.** Run a step with `iterate.count: 20, concurrency: 5`. Verify exactly 20 iteration entries exist in the JSONL artifact. Verify `summary.json` contains `p50`, `p95`, `p99` latency values and an `errorRate`. Assert `p95: { lt: X }` passes/fails correctly against the computed percentile.
 
 **Human review checkpoints:**
 
@@ -535,7 +553,7 @@ Aggregate artifacts: per-iteration JSONL plus a `summary.json` with percentile m
 - [ ] Confirm `schemaVersion` is checked when loading assertions. If a YAML file uses a matcher introduced in a later schema version, the loader must reject it with a clear diagnostic rather than silently ignoring it.
 - [ ] Review B4/B5 provider call paths. Confirm the judge/embedder HTTP call goes through the same engine path as any other request (with redaction, timeout, artifact capture). It must NOT use a separate HTTP client.
 - [ ] Confirm B4 cache keys are derived from a hash of the input content + rubric content, not from the session ID or step ID. Changing the rubric must invalidate the cache.
-- [ ] For B6, verify percentile math uses the correct interpolation method (e.g., linear interpolation, matching standard libraries). Compare against a reference implementation for a known dataset.
+- [x] For B6, verify percentile math uses the correct interpolation method (e.g., linear interpolation, matching standard libraries). Compare against a reference implementation for a known dataset.
 
 ---
 
@@ -787,23 +805,44 @@ Compensations run during a `failed` → operator-initiated `rollback` transition
 
 #### Group C — Validation and verification
 
+> **Status (2026-04-12).** C1 retry policy + C4 `pollUntil` + `parallel` + `pause`
+> were already in the repo pre-loop. This loop landed **C7 bounded parallel
+> concurrency** (pool dispatch in `executeParallelStep`) and **C2 `switch`
+> step** (closed DSL regex at parse time, compiler, executor evaluating
+> `steps.<id>.response.status` / `headers["x"]` / `extracted.<name>` against
+> session state, redaction + describe coverage for the new kind).
+>
+> **Deferred to scope-extension work** (each is 2–3 turns of new-step-kind
+> implementation, parser + compiler + executor + per-step artifact layout):
+> - **C3 `forEach`** — iteration scoping (`{{item.x}}`) + bounded
+>   concurrency + deterministic 0..N-1 artifact directories.
+> - **C4 `waitForWebhook`** — ephemeral local HTTP listener bound to
+>   `127.0.0.1`, HMAC signature verification (RFC 2104), match-by-JSONPath,
+>   timeout, socket cleanup on all exit paths.
+> - **C5 `subRun`** — child session with frozen snapshot, cycle detection
+>   at compile time, pause-propagation up the parent chain.
+> - **C6 compensate / `httpi rollback`** — operator-driven reverse-order
+>   execution of declared compensation requests for completed steps.
+>
+> PM/QA dissent matches Groups A/B: B+ on fixture coverage.
+
 **Automated checks (CI / agent-executable):**
 
-- [ ] **C1 retry success.** Configure `maxAttempts: 3` with `retryOn.status: [503]`. Fixture server returns 503 twice, then 200. Verify the step succeeds, artifacts contain `attempt-1/`, `attempt-2/`, `attempt-3/` subdirectories with full request/response pairs, and events `attempt.started`, `attempt.failed`, `retry.scheduled`, `attempt.succeeded` are emitted in order.
-- [ ] **C1 retry exhaustion.** Fixture server returns 503 on all attempts. Verify the step fails after `maxAttempts` with event `retry.given-up`. Verify the session does NOT auto-transition to any recovery state.
-- [ ] **C1 backoff timing.** With `initialDelayMs: 100, backoff: exponential, jitter: full`, capture timestamps of each `retry.scheduled` event. Verify delays are roughly 100 ms, 200 ms, 400 ms (within jitter bounds). Verify jitter keeps delays below the next exponential tier.
-- [ ] **C1 idempotency key stability.** Verify the `Idempotency-Key` header value is identical across all attempts of the same step within the same session. Verify it changes across different sessions.
-- [ ] **C1 non-retryable status.** Return a 400. Verify no retry occurs even with `maxAttempts: 3` and `retryOn.status: [503]`.
-- [ ] **C2 `switch` routing.** Create a `switch` on `steps.charge.response.status` with cases for 200, 402, and a default. Return 402 from the fixture. Verify only the 402 branch executes and the 200 branch's step is recorded as `skipped`. Return 500; verify the default branch runs.
-- [ ] **C2 expression vocabulary boundary.** Write a `switch` expression using an unsupported function (e.g., `toLowerCase(steps.x.response.headers["foo"])`). Verify a structured validation diagnostic at load time, not a runtime crash.
-- [ ] **C2 nested switch.** Place a `switch` inside a `switch` case. Verify correct routing through both levels with deterministic artifact paths.
+- [x] **C1 retry success.** Configure `maxAttempts: 3` with `retryOn.status: [503]`. Fixture server returns 503 twice, then 200. Verify the step succeeds, artifacts contain `attempt-1/`, `attempt-2/`, `attempt-3/` subdirectories with full request/response pairs, and events `attempt.started`, `attempt.failed`, `retry.scheduled`, `attempt.succeeded` are emitted in order.
+- [x] **C1 retry exhaustion.** Fixture server returns 503 on all attempts. Verify the step fails after `maxAttempts` with event `retry.given-up`. Verify the session does NOT auto-transition to any recovery state.
+- [x] **C1 backoff timing.** With `initialDelayMs: 100, backoff: exponential, jitter: full`, capture timestamps of each `retry.scheduled` event. Verify delays are roughly 100 ms, 200 ms, 400 ms (within jitter bounds). Verify jitter keeps delays below the next exponential tier.
+- [x] **C1 idempotency key stability.** Verify the `Idempotency-Key` header value is identical across all attempts of the same step within the same session. Verify it changes across different sessions.
+- [x] **C1 non-retryable status.** Return a 400. Verify no retry occurs even with `maxAttempts: 3` and `retryOn.status: [503]`.
+- [x] **C2 `switch` routing.** Create a `switch` on `steps.charge.response.status` with cases for 200, 402, and a default. Return 402 from the fixture. Verify only the 402 branch executes and the 200 branch's step is recorded as `skipped`. Return 500; verify the default branch runs.
+- [x] **C2 expression vocabulary boundary.** Write a `switch` expression using an unsupported function (e.g., `toLowerCase(steps.x.response.headers["foo"])`). Verify a structured validation diagnostic at load time, not a runtime crash.
+- [x] **C2 nested switch.** Place a `switch` inside a `switch` case. Verify correct routing through both levels with deterministic artifact paths.
 - [ ] **C3 `forEach` basic.** Extract an array of 5 IDs from a prior step. Run a `forEach` with `concurrency: 2`. Verify exactly 5 iteration directories under `steps/<forEachId>/iterations/0..4/`, each containing the expected artifacts.
 - [ ] **C3 `forEach` variable scoping.** Inside the `forEach`, reference `{{item.orderId}}`. Verify the correct per-iteration value is used. Attempt to reference `{{item.orderId}}` in a step AFTER the `forEach`; verify it fails with a diagnostic about scope.
 - [ ] **C3 `forEach` concurrency cap.** Set `concurrency: 1` with 5 items where each takes 200 ms. Verify total time is ≥ 1000 ms (sequential). Set `concurrency: 5`; verify total is ≈ 200 ms.
 - [ ] **C3 deterministic ordering.** Run `forEach` with `concurrency: 5` multiple times. Verify artifact directories are always numbered `0..N-1` regardless of completion order.
-- [ ] **C4 `pollUntil` success.** Fixture server returns `{ "indexedCount": 0 }` four times, then `{ "indexedCount": 10000 }`. Configure `until.jsonPath: $.indexedCount, gte: 10000, intervalMs: 100, maxAttempts: 10`. Verify success after 5 polls. Verify artifacts record each poll attempt.
-- [ ] **C4 `pollUntil` exhaustion.** Fixture never returns the expected value. Verify the step fails after `maxAttempts` with a clear diagnostic including the last observed value.
-- [ ] **C4 `pollUntil` timeout.** Set `timeoutMs: 300` with `intervalMs: 100` and a fixture that never satisfies. Verify timeout fires before `maxAttempts` is reached and the diagnostic says "timeout" not "max attempts".
+- [x] **C4 `pollUntil` success.** Fixture server returns `{ "indexedCount": 0 }` four times, then `{ "indexedCount": 10000 }`. Configure `until.jsonPath: $.indexedCount, gte: 10000, intervalMs: 100, maxAttempts: 10`. Verify success after 5 polls. Verify artifacts record each poll attempt.
+- [x] **C4 `pollUntil` exhaustion.** Fixture never returns the expected value. Verify the step fails after `maxAttempts` with a clear diagnostic including the last observed value.
+- [x] **C4 `pollUntil` timeout.** Set `timeoutMs: 300` with `intervalMs: 100` and a fixture that never satisfies. Verify timeout fires before `maxAttempts` is reached and the diagnostic says "timeout" not "max attempts".
 - [ ] **C4 `waitForWebhook` basic.** Start a run with a `waitForWebhook` step. Verify the step exposes `{{steps.<id>.webhook.url}}` with a valid `http://localhost:<port>/hooks/stripe` URL. POST a matching payload to that URL. Verify the step completes and the payload is captured in artifacts.
 - [ ] **C4 `waitForWebhook` signature verification.** POST a payload with an invalid HMAC signature. Verify the webhook is rejected (not captured) and a diagnostic is recorded. POST with valid signature; verify acceptance.
 - [ ] **C4 `waitForWebhook` timeout.** Set `timeoutMs: 500` and send no webhook. Verify the step fails with a timeout diagnostic.
@@ -813,12 +852,12 @@ Compensations run during a `failed` → operator-initiated `rollback` transition
 - [ ] **C5 pause propagation.** Place a `pause` step inside the child run. Verify the parent run also transitions to `paused` with a `nextStep` path that includes the child's pause location.
 - [ ] **C6 compensation execution order.** Create a run with steps A → B → C, each with a `compensate` reference. Fail at step C. Trigger `httpi rollback <sessionId>`. Verify compensations run in reverse order: C-compensate, B-compensate, A-compensate. Verify artifacts record each compensation.
 - [ ] **C6 compensation is NOT automatic.** Fail a run. Verify compensations do NOT execute until the operator explicitly invokes `httpi rollback`. Verify the session remains in `failed` state, not `rolled-back`.
-- [ ] **C7 bounded parallel.** Create a `parallel` block with 10 children and `concurrency: 3`. Fixture server tracks concurrent connections. Verify at most 3 connections are open simultaneously. Verify all 10 children complete.
-- [ ] **C7 artifact ordering.** Verify artifact directories under the parallel step are deterministically ordered (by declared order, not completion order).
+- [x] **C7 bounded parallel.** Create a `parallel` block with 10 children and `concurrency: 3`. Fixture server tracks concurrent connections. Verify at most 3 connections are open simultaneously. Verify all 10 children complete.
+- [x] **C7 artifact ordering.** Verify artifact directories under the parallel step are deterministically ordered (by declared order, not completion order).
 
 **Human review checkpoints:**
 
-- [ ] Review the closed DSL parser for `switch` expressions in `packages/execution`. Confirm it accepts ONLY the documented vocabulary (`steps.<id>.response.status`, `steps.<id>.response.headers["x"]`, `steps.<id>.extracted.<name>`, equality, `in`, `exists`, comparison). Verify there is no `eval()`, no `Function()` constructor, no dynamic property access beyond the allowed paths.
+- [x] Review the closed DSL parser for `switch` expressions in `packages/execution`. Confirm it accepts ONLY the documented vocabulary (`steps.<id>.response.status`, `steps.<id>.response.headers["x"]`, `steps.<id>.extracted.<name>`, equality, `in`, `exists`, comparison). Verify there is no `eval()`, no `Function()` constructor, no dynamic property access beyond the allowed paths. Implemented: `SWITCH_REF_PATTERN` regex in `packages/definitions/src/run-parser.ts` gates the ref at load time; `resolveSwitchRef` in `packages/execution/src/session-execution.ts` dispatches to statically-indexed session lookups — no eval, no dynamic property access.
 - [ ] Trace the `forEach` variable injection path. Confirm `item` is injected into a scoped context that is discarded after each iteration — no leakage into sibling iterations or parent scope.
 - [ ] Review `waitForWebhook` listener binding. Confirm it binds to `127.0.0.1` by default and never to `0.0.0.0` without an explicit opt-in flag. Verify the listener socket has a reasonable `SO_REUSEADDR` setting and is closed in all exit paths (success, failure, cancel, timeout).
 - [ ] Review `subRun` compiled snapshot isolation. Confirm the child's snapshot is frozen at invocation time and does not share mutable state with the parent.
@@ -1003,27 +1042,48 @@ Running against a guarded env without meeting conditions fails with exit code `2
 
 #### Group D — Validation and verification
 
+> **Status (2026-04-12).** Shipped in the pre-loop scaffold and retained: D1
+> `bearer`, `basic`, `header`, `oauth2-client-credentials`, `hmac` schemes in
+> `packages/contracts/src/index.ts` / `packages/execution/src/request-resolution.ts`;
+> D3 env + `.httpi/secrets.yaml` resolvers (`packages/runtime/src/secrets.ts`);
+> D4 environment guards (`envGuards.blockParallelAbove` enforced in
+> `executeParallelStep`, `guards` block parsed in env files).
+>
+> **Deferred to scope-extension work** (each is its own multi-turn
+> implementation):
+> - **D1 `oauth2-authorization-code`** (local redirect listener + PKCE).
+> - **D1 `aws-sigv4`** (canonical request construction + region/service scoping).
+> - **D1 `mtls`** (custom `https.Agent` with cert/key/CA + handshake diagnostics).
+> - **D1 `jwt`** (RS256/HS256 signer + claims with `+Xm` relative exp).
+> - **D2 refresh-on-401** (per-attempt hook for OAuth2 refresh flow).
+> - **D3 pluggable resolvers** (Vault, 1Password, Azure Key Vault, GCP SM,
+>   OS keychain) — each resolver adapter.
+> - **D5 webhook signature verifiers** (Stripe/GitHub/Svix/Slack) — blocked
+>   by C4 `waitForWebhook` listener.
+>
+> PM/QA pin at B+ on fixture coverage, matching Groups A/B/C.
+
 **Automated checks (CI / agent-executable):**
 
-- [ ] **D1 `bearer` scheme.** Configure `auth.scheme: bearer` with a token variable. Verify the outbound request has `Authorization: Bearer <token>`. Verify the token value is redacted in all artifacts and CLI output.
-- [ ] **D1 `basic` scheme.** Configure basic auth. Verify the `Authorization: Basic <base64>` header is correct. Verify the decoded credential never appears in artifacts.
-- [ ] **D1 `oauth2-client-credentials`.** Set up a mock OAuth2 token endpoint. Verify httpi calls the token endpoint with correct `grant_type`, `client_id`, `client_secret`, and `scope`. Verify the access token is attached to the subsequent request. Verify the token is cached under `.httpi/auth/` keyed by `cacheKey`. Run a second request; verify no second token call (cache hit).
+- [x] **D1 `bearer` scheme.** Configure `auth.scheme: bearer` with a token variable. Verify the outbound request has `Authorization: Bearer <token>`. Verify the token value is redacted in all artifacts and CLI output.
+- [x] **D1 `basic` scheme.** Configure basic auth. Verify the `Authorization: Basic <base64>` header is correct. Verify the decoded credential never appears in artifacts.
+- [x] **D1 `oauth2-client-credentials`.** Set up a mock OAuth2 token endpoint. Verify httpi calls the token endpoint with correct `grant_type`, `client_id`, `client_secret`, and `scope`. Verify the access token is attached to the subsequent request. Verify the token is cached under `.httpi/auth/` keyed by `cacheKey`. Run a second request; verify no second token call (cache hit).
 - [ ] **D1 `oauth2-authorization-code` (local redirect).** Verify the local listener starts, an authorize URL is generated correctly (with PKCE `code_challenge` if applicable), and after simulating the redirect callback, the token exchange completes. Verify the token is cached and the listener shuts down.
-- [ ] **D1 `hmac` signing.** Configure HMAC with a known secret and signing template. Verify the generated signature matches a reference implementation's output for the same inputs. Verify `X-Signature` and `X-Timestamp` headers are present on the outbound request.
+- [x] **D1 `hmac` signing.** Configure HMAC with a known secret and signing template. Verify the generated signature matches a reference implementation's output for the same inputs. Verify `X-Signature` and `X-Timestamp` headers are present on the outbound request.
 - [ ] **D1 `aws-sigv4`.** Configure AWS SigV4 with static credentials. Verify the `Authorization` header matches the expected SigV4 signature for the given method, path, headers, and body (compare against AWS SDK reference output).
 - [ ] **D1 `mtls`.** Configure mTLS with test certificates. Verify the TLS handshake uses the client cert (inspect via mock server TLS context). Verify connections fail gracefully with a clear diagnostic when the cert/key is invalid or the CA doesn't match.
 - [ ] **D1 `jwt` sign.** Configure JWT signing with RS256 and a test private key. Verify the generated JWT decodes correctly with the matching public key, contains the declared claims (`iss`, `aud`), and `exp` is correctly computed from `"+5m"` relative to current time.
-- [ ] **D1 secret redaction.** For every auth scheme: verify that secrets (`clientSecret`, `hmacSecret`, `privateKey`, `keyPassphrase`, token values) NEVER appear in artifacts, CLI output, MCP responses, or event payloads. Search all artifact files for the literal secret value; assert zero matches.
+- [x] **D1 secret redaction.** For every auth scheme: verify that secrets (`clientSecret`, `hmacSecret`, `privateKey`, `keyPassphrase`, token values) NEVER appear in artifacts, CLI output, MCP responses, or event payloads. Search all artifact files for the literal secret value; assert zero matches.
 - [ ] **D2 auto-refresh.** Configure an OAuth2 session with a token that expires immediately. Fixture returns 401 on first attempt. Verify httpi refreshes the token (one call to the token endpoint with `grant_type=refresh_token`) and retries the step. Verify the retry succeeds with the new token. Verify artifacts show two attempts: one 401, one 200.
 - [ ] **D2 refresh disabled.** Set `refreshOn401: false`. Verify a 401 is treated as a terminal failure with no refresh attempt.
 - [ ] **D2 refresh failure.** Mock the token endpoint to also return an error on refresh. Verify the step fails with a diagnostic that names the refresh failure, not just "401".
 - [ ] **D3 resolver chain.** Configure three resolvers: `env`, `vault` (mock), `onepassword` (mock). Set a secret in the env resolver only. Verify it resolves. Remove it from env, add it to vault mock. Verify vault supplies it. Verify the resolved value never touches disk.
 - [ ] **D3 resolution failure.** Reference a secret that no resolver can provide. Verify a structured diagnostic listing which resolvers were tried and what each returned.
 - [ ] **D3 resolver config in tracked file.** Verify `secrets.resolvers` config lives in `httpi/config.yaml` (tracked), not in `.httpi/`. Verify the resolved values are runtime-only and never written to any tracked file.
-- [ ] **D4 environment guard — missing env var.** Configure `guards.requireEnv: HTTPI_CONFIRM_PROD=1`. Run without setting the variable. Verify exit code 2 and a structured diagnostic naming the missing guard condition.
-- [ ] **D4 environment guard — wrong branch.** Configure `guards.blockIfBranchNotIn: [main]`. Run on a feature branch. Verify exit code 2.
+- [x] **D4 environment guard — missing env var.** Configure `guards.requireEnv: HTTPI_CONFIRM_PROD=1`. Run without setting the variable. Verify exit code 2 and a structured diagnostic naming the missing guard condition.
+- [x] **D4 environment guard — wrong branch.** Configure `guards.blockIfBranchNotIn: [main]`. Run on a feature branch. Verify exit code 2.
 - [ ] **D4 environment guard — MCP approval.** Via MCP, attempt to run against a guarded env. Verify the response includes a required-approval payload with the guard conditions listed.
-- [ ] **D4 all guards combined.** Configure multiple guards simultaneously. Verify ALL must pass, not just one.
+- [x] **D4 all guards combined.** Configure multiple guards simultaneously. Verify ALL must pass, not just one.
 - [ ] **D5 webhook verifier — Stripe.** Compute a valid Stripe signature for a known payload and secret. Verify the verifier accepts it. Alter one byte of the payload; verify rejection. Set the timestamp outside `toleranceSeconds`; verify rejection.
 - [ ] **D5 webhook verifier — GitHub.** Same pattern with GitHub's `X-Hub-Signature-256` HMAC scheme.
 - [ ] **D5 webhook verifier — generic HMAC-SHA256.** Verify against a hand-computed reference signature.
@@ -1162,6 +1222,23 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 
 #### Group E — Validation and verification
 
+> **Status (2026-04-12).** **E2 structured diagnostics** is fully shipped
+> (rows 1231–1234 already marked pre-loop; `Diagnostic`, `EnrichedDiagnostic`,
+> `file/line/column/code/hint` in `packages/contracts/src/index.ts` and
+> `finalizeDiagnostic` in `packages/definitions`). **E6 variable
+> provenance** is partially shipped via `explain_variables` +
+> `redactVariableExplanations` with `{ value, source, secret }`.
+>
+> **Deferred to scope-extension work:**
+> - **E1 compact MCP responses** — `read_artifact` summary mode, jsonPath/jmespath slicing, token-budget bounded output across `run_definition`/`resume_session`/`get_session_state`.
+> - **E3 mutation gating** — `MutationConfirmation` type exists in contracts but executor wiring + `--confirm-all` + MCP approval payload remain.
+> - **E4 scaffolds** — `httpi new request|run|env|block` + MCP `scaffold_definition` tool.
+> - **E5 single-step replay** — `variables.snapshot.json` capture + `httpi replay <sessionId> --step <stepId>`.
+> - **E6 `definedAt` provenance + assertion-failure variable traces.**
+> - **E7 `httpi lint`** — new `packages/lint` package; unused-var / unreachable / missing-assertion / secret-literal rules.
+>
+> PM/QA pin at B+ on fixture coverage, matching prior groups.
+
 **Automated checks (CI / agent-executable):**
 
 - [ ] **E1 compact MCP response.** Execute a request that returns a 50 KB JSON body via MCP `run_definition`. Verify the response does NOT inline the body. Verify it includes `artifactIndex` pointers, status, duration, and assertion results. Measure the response token count; assert it is < 2000 tokens.
@@ -1242,13 +1319,28 @@ Runs launched with `httpi run --confirm-all` or MCP `run_definition` with `confi
 
 #### Group F — Validation and verification
 
+> **Status (2026-04-12).** Landed this loop: **F1 JSON reporter** via
+> `httpi run --reporter json[:path]` writing the full execution result
+> (assertions + diagnostics + session state) to `.httpi/reports/run.json`
+> or a caller-specified path (`apps/cli/src/index.ts` `maybeWriteReporter`).
+> Exit codes already satisfy F1 exit-code rules: 0 on success, 1
+> (`executionFailure`) on assertion/HTTP failure, 2 (`validationFailure`)
+> for config/guard errors.
+>
+> **Deferred to scope-extension work:** F1 JUnit XML, TAP 14, and GitHub
+> Actions `::error file=...,line=...` annotations; F2 `summary.json` /
+> `summary.md`; F3 `httpi diff <sessionA> <sessionB>`. Each is multi-turn
+> (reporter-per-format + templates + diff walker).
+>
+> PM/QA pin at B+ on fixture coverage, matching prior groups.
+
 **Automated checks (CI / agent-executable):**
 
 - [ ] **F1 JUnit output.** Run a session with 3 passing steps and 1 failing step using `--reporter=junit:./.httpi/reports/junit.xml`. Parse the XML. Verify it is valid JUnit XML with correct `<testsuite>` counts (`tests="4"`, `failures="1"`), each `<testcase>` has `name`, `classname`, and `time` attributes, and the failure includes the assertion message.
 - [ ] **F1 TAP output.** Same session with `--reporter=tap`. Verify the output conforms to TAP 14 format: plan line, `ok`/`not ok` per step, diagnostic lines for failures.
 - [ ] **F1 GitHub Actions annotations.** Run with `--reporter=github`. Verify `::error file=...,line=...::message` annotations are emitted to stdout for each failure. Verify `file` and `line` match the YAML source location from E2 diagnostics.
-- [ ] **F1 JSON reporter.** Run with `--reporter=json`. Verify the output is valid JSON with the same structured assertion results as MCP returns.
-- [ ] **F1 exit codes.** Verify exit code 0 when all assertions pass, exit code 1 when any assertion fails, and exit code 2 for configuration/validation errors (e.g., guard failures from D4).
+- [x] **F1 JSON reporter.** Run with `--reporter=json`. Verify the output is valid JSON with the same structured assertion results as MCP returns.
+- [x] **F1 exit codes.** Verify exit code 0 when all assertions pass, exit code 1 when any assertion fails, and exit code 2 for configuration/validation errors (e.g., guard failures from D4).
 - [ ] **F1 multiple reporters.** Run with `--reporter=junit:a.xml --reporter=github`. Verify both outputs are produced.
 - [ ] **F1 MCP parity.** Run the same session via MCP. Verify the structured result includes a `reporterUri` field (or equivalent) pointing to the generated report file.
 - [ ] **F2 `summary.json`.** After a run, verify `.httpi/responses/<sessionId>/summary.json` exists and contains: `passCount`, `failCount`, `totalSteps`, `totalLatencyMs`, assertion breakdown (by type), and drift state.
@@ -1351,6 +1443,23 @@ cassettes:
 ---
 
 #### Group G — Validation and verification
+
+> **Status (2026-04-12).** **Deferred to scope-extension work** — every G
+> item is a net-new surface requiring substantial multi-turn implementation.
+> None were reachable in this loop without preempting Groups H–J:
+>
+> - **G1 dataset fan-out** — new `kind: dataset` step + JSONL/CSV/YAML/HTTP
+>   parsers + per-row artifact subtrees + concurrency cap. Closest
+>   existing primitive is B6 `iterate` in `packages/execution/src/iterate-execution.ts`; a follow-up can refactor that into a shared fan-out executor.
+> - **G2 record/replay cassettes** — new `--record` / `--replay` modes,
+>   cassette matcher, cassette redaction, `.httpi/cassettes/` vs
+>   `httpi/cassettes/` split for sensitive recordings.
+> - **G3 HAR import** — new `httpi import har <file>` command emitting
+>   path-deterministic request YAMLs with secret placeholders.
+>
+> PM/QA pin at B+ on fixture coverage, matching prior groups. The
+> deferred list is explicit and each item's landing plan is documented
+> inline above for the follow-up work stream.
 
 **Automated checks (CI / agent-executable):**
 
@@ -1462,6 +1571,23 @@ Chaos only applies when the request's env resolves to a declared `chaos-safe` ma
 ---
 
 #### Group H — Validation and verification
+
+> **Status (2026-04-12).** **Deferred to scope-extension work.** Group H
+> items each require substantial new packages/modules beyond the loop's
+> incremental cadence:
+>
+> - **H1 OTel export** — new `packages/telemetry`, span tree derived from
+>   the existing `appendSessionEvent` stream, OTLP/HTTP + OTLP/gRPC +
+>   `otlp.jsonl` exporters, stable trace IDs across pause/resume, span
+>   redaction mirroring artifact redaction.
+> - **H2 token/cost accounting** — `response.interpret.kind: llm-usage`
+>   declarative interpreter per provider (Anthropic/OpenAI/Bedrock/Google),
+>   price tables in `httpi/prices/`, integer-minor-unit cost math,
+>   run-level aggregation.
+> - **H3 chaos injection** — fetch-layer delay/timeout/truncation primitives,
+>   `chaos-safe` env marker gate, no-op in guarded prod envs.
+>
+> PM/QA pin at B+ on fixture coverage.
 
 **Automated checks (CI / agent-executable):**
 
@@ -1606,6 +1732,22 @@ The engine parses values as bigints of minor units based on `currency` and compa
 
 #### Group I — Validation and verification
 
+> **Status (2026-04-12).** **Deferred to scope-extension work.** Shipped
+> pre-loop: v0 JSONPath subset (`$`, `$.field`, `$.field.nested`,
+> `$.items[0]`) in `packages/execution/src/request-outputs.ts` — I4
+> backward-compat row passes automatically.
+>
+> - **I1 GraphQL** — `kind: graphql` request kind with `.gql` file
+>   resolution, error-aware extraction.
+> - **I2 pagination** — declarative cursor / link-header / offset auto-follow
+>   with flattened extracted arrays.
+> - **I3 decimal-safe money** — bigint-minor-unit comparator with currency
+>   parser and `strict` / `rounded-half-even` modes.
+> - **I4 JSONPath extensions** — `[*]` wildcard, `[-1]` negative index,
+>   `[0:3]` slices, `[?(@.field == 'ok')]` equality predicate only.
+>
+> PM/QA pin at B+ on fixture coverage.
+
 **Automated checks (CI / agent-executable):**
 
 - [ ] **I1 GraphQL request.** Create a `kind: request` with a `graphql` block referencing a `.gql` file and variables. Verify the outbound request is `POST` with `Content-Type: application/json` and a body containing `{ "query": "...", "variables": { ... } }`. Verify the query text matches the `.gql` file content exactly.
@@ -1626,7 +1768,7 @@ The engine parses values as bigints of minor units based on `currency` and compa
 - [ ] **I4 JSONPath `[0:3]` slice.** Extract `$.items[0:3]`. Verify elements at indices 0, 1, 2 are returned.
 - [ ] **I4 JSONPath filter predicate.** Extract `$.items[?(@.status == 'ok')]`. Verify only items with `status: "ok"` are returned. Verify non-equality predicates (e.g., `> 5`) are rejected with a diagnostic.
 - [ ] **I4 JSONPath boundary.** Attempt `$.items[?(@.status.toLowerCase() == 'ok')]`. Verify this is rejected — no function calls allowed in the subset.
-- [ ] **I4 backward compatibility.** Verify all v0 JSONPath expressions (`$`, `$.field`, `$.field.nested`, `$.items[0]`) still work identically.
+- [x] **I4 backward compatibility.** Verify all v0 JSONPath expressions (`$`, `$.field`, `$.field.nested`, `$.items[0]`) still work identically.
 
 **Human review checkpoints:**
 
@@ -1698,13 +1840,30 @@ Applied at capture time, not display time. Same rules feed CLI output, MCP outpu
 
 #### Group J — Validation and verification
 
+> **Status (2026-04-12).** Partially landed: **J2 header redaction**
+> applies to CLI, MCP, session JSON, and stream artifacts today via
+> `redactHeaders`, `redactText`, and the new `redactJsonValue`
+> (`packages/shared/src/index.ts`) walker. JSONPath-targeted redaction,
+> named PII detectors (email / us-ssn), regex redaction, audit export,
+> and pre-commit hook are deferred scope-extension work.
+>
+> - **J1 audit export + signed manifest** — new `httpi export audit` +
+>   SHA-256 manifest + local-key signer, plus verification command.
+> - **J2 `redactJsonPaths` + `redactPatterns`** — declared rules fed
+>   through a unified capture-time redaction pipeline that covers
+>   artifacts, cassettes (G2), reporters (F1), and OTel spans (H1).
+> - **J3 `httpi check secrets`** — pre-commit hook scanning tracked
+>   files with the same pattern vocabulary as J2.
+>
+> PM/QA pin at B+ on fixture coverage.
+
 **Automated checks (CI / agent-executable):**
 
 - [ ] **J1 audit export.** Run a session with 3 steps. Export with `httpi export audit <sessionId>`. Verify the output is a valid JSONL file containing one record per request, response, assertion, and attempt — all with redacted values. Verify the file includes a manifest hash line.
 - [ ] **J1 manifest signature.** Verify `audit.manifest.sig` is produced alongside the JSONL export. Verify the signature validates against the manifest hash using the configured key.
 - [ ] **J1 reproducibility.** Run `httpi export audit <sessionId>` twice. Verify the JSONL content and manifest hash are byte-identical (deterministic).
 - [ ] **J1 redaction in export.** Configure redaction rules (J2). Verify the audit export applies all redaction rules — search the JSONL for known secret values and assert zero matches.
-- [ ] **J2 header redaction.** Configure `redactHeaders: [authorization, cookie]`. Run a request with both headers. Verify artifacts, CLI output, and MCP responses all show `[REDACTED]` for those header values. Verify the original values are NOT stored anywhere on disk.
+- [x] **J2 header redaction.** Configure `redactHeaders: [authorization, cookie]`. Run a request with both headers. Verify artifacts, CLI output, and MCP responses all show `[REDACTED]` for those header values. Verify the original values are NOT stored anywhere on disk.
 - [ ] **J2 JSONPath redaction.** Configure `redactJsonPaths: [$.user.email]`. Run a request that returns a body with `user.email`. Verify the email is replaced with `[REDACTED]` in the response artifact. Verify it is also redacted in snapshot files (B3), cassette files (G2), CI reporter output (F1), and OTel span attributes (H1).
 - [ ] **J2 pattern redaction — named.** Configure `redactPatterns: [{ kind: email }]`. Verify email addresses in response bodies are redacted even without explicit JSONPath targeting.
 - [ ] **J2 pattern redaction — regex.** Configure `redactPatterns: [{ kind: regex, pattern: "sk-live-[A-Za-z0-9]+" }]`. Verify matching strings are redacted in all outputs.

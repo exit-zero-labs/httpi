@@ -14,6 +14,7 @@ import {
 import { executeHttpRequest } from "@exit-zero-labs/httpi-http";
 import {
   appendSessionEvent,
+  isSessionCancelled,
   redactArtifactText,
   writeSession,
 } from "@exit-zero-labs/httpi-runtime";
@@ -22,9 +23,10 @@ import {
   exitCodes,
   HttpiError,
   isHttpiError,
+  redactJsonValue,
   toIsoTimestamp,
 } from "@exit-zero-labs/httpi-shared";
-import { evaluateAssertions } from "./assertions.js";
+import { evaluateAssertions, evaluateSchemaAssertions } from "./assertions.js";
 import { getSessionStepRecord } from "./project-context.js";
 import { maybeWriteRequestArtifacts } from "./request-artifacts.js";
 import { extractStepOutputs } from "./request-outputs.js";
@@ -90,8 +92,106 @@ export async function executeRequestStep(
     exchange = await executeHttpRequest(
       materialized.request,
       nextSession.compiled.capture,
+      {
+        shouldCancel: () =>
+          isSessionCancelled(projectRoot, nextSession.sessionId),
+        stream: {
+          onFirstByte: ({ tOffsetMs }) => {
+            void appendSessionEvent(projectRoot, nextSession, {
+              schemaVersion: nextSession.schemaVersion,
+              eventType: "stream.first-byte",
+              timestamp: toIsoTimestamp(),
+              sessionId: nextSession.sessionId,
+              runId: nextSession.runId,
+              stepId: step.id,
+              attempt,
+              outcome: "running",
+              message: `tOffsetMs=${tOffsetMs}`,
+            });
+          },
+          onChunk: (record) => {
+            void appendSessionEvent(projectRoot, nextSession, {
+              schemaVersion: nextSession.schemaVersion,
+              eventType: "stream.chunk.received",
+              timestamp: toIsoTimestamp(),
+              sessionId: nextSession.sessionId,
+              runId: nextSession.runId,
+              stepId: step.id,
+              attempt,
+              outcome: "running",
+              message: `seq=${record.seq} bytes=${record.bytes}`,
+            });
+          },
+          onCompleted: ({ totalChunks, totalBytes, durationMs }) => {
+            void appendSessionEvent(projectRoot, nextSession, {
+              schemaVersion: nextSession.schemaVersion,
+              eventType: "stream.completed",
+              timestamp: toIsoTimestamp(),
+              sessionId: nextSession.sessionId,
+              runId: nextSession.runId,
+              stepId: step.id,
+              attempt,
+              outcome: "success",
+              message: `chunks=${totalChunks} bytes=${totalBytes} durationMs=${durationMs}`,
+            });
+          },
+          onFailed: ({ errorClass, message }) => {
+            void appendSessionEvent(projectRoot, nextSession, {
+              schemaVersion: nextSession.schemaVersion,
+              eventType: "stream.failed",
+              timestamp: toIsoTimestamp(),
+              sessionId: nextSession.sessionId,
+              runId: nextSession.runId,
+              stepId: step.id,
+              attempt,
+              outcome: "failed",
+              message: `${errorClass}: ${message}`,
+            });
+          },
+        },
+      },
     );
-    assertExpectations(step, exchange);
+    // Redact secret values out of stream fields that feed assertion diagnostics
+    // (assembledLast, assembledJson, assembledText, chunk previews) so a
+    // schema-assertion failure's `actual` payload cannot leak secrets into
+    // error output. Artifact-write layer redacts again when persisting.
+    if (exchange.stream && secretValues.length > 0) {
+      exchange = {
+        ...exchange,
+        stream: {
+          ...exchange.stream,
+          chunks: exchange.stream.chunks.map((c) => ({
+            ...c,
+            preview: redactArtifactText(c.preview, secretValues),
+          })),
+          ...(exchange.stream.assembledText !== undefined
+            ? {
+                assembledText: redactArtifactText(
+                  exchange.stream.assembledText,
+                  secretValues,
+                ),
+              }
+            : {}),
+          ...(exchange.stream.assembledJson !== undefined
+            ? {
+                assembledJson: redactJsonValue(
+                  exchange.stream.assembledJson,
+                  secretValues,
+                ),
+              }
+            : {}),
+          ...(exchange.stream.assembledLast !== undefined
+            ? {
+                assembledLast: redactJsonValue(
+                  exchange.stream.assembledLast,
+                  secretValues,
+                ),
+              }
+            : {}),
+        },
+      };
+    }
+    await assertExpectations(projectRoot, step, exchange);
     extractedOutputs = extractStepOutputs(step, exchange);
     const extractedSecretValues = collectSecretOutputValues(extractedOutputs);
 
@@ -239,10 +339,11 @@ function redactExecutionDiagnostics(
   }));
 }
 
-function assertExpectations(
+async function assertExpectations(
+  projectRoot: string,
   step: CompiledRequestStep,
   exchange: HttpExecutionResult,
-): void {
+): Promise<void> {
   const expect = step.request.expect;
   if (
     !expect.status &&
@@ -255,6 +356,11 @@ function assertExpectations(
   }
 
   const results: AssertionResult[] = evaluateAssertions(expect, exchange);
+  const schemaResults = await evaluateSchemaAssertions(expect, exchange, {
+    projectRoot,
+    requestFilePath: step.request.filePath,
+  });
+  results.push(...schemaResults);
   const failures = results.filter((r) => !r.passed);
   if (failures.length === 0) {
     return;

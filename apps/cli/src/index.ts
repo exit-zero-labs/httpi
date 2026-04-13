@@ -5,11 +5,14 @@ import type {
   FlatVariableMap,
 } from "@exit-zero-labs/httpi-contracts";
 import {
+  acceptSnapshotForStep,
+  cancelSessionRun,
   describeRequest,
   describeRun,
   explainVariables,
   getSessionState,
   initProject,
+  installSignalCancelHandler,
   listProjectDefinitions,
   listSessionArtifacts,
   readSessionArtifact,
@@ -121,7 +124,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       });
       writeDiagnostics(result.diagnostics);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      return result.diagnostics.some((diagnostic) => diagnostic.level === "error")
+      return result.diagnostics.some(
+        (diagnostic) => diagnostic.level === "error",
+      )
         ? exitCodes.validationFailure
         : exitCodes.success;
     }
@@ -134,7 +139,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       });
       writeDiagnostics(result.diagnostics);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      return result.diagnostics.some((diagnostic) => diagnostic.level === "error")
+      return result.diagnostics.some(
+        (diagnostic) => diagnostic.level === "error",
+      )
         ? exitCodes.validationFailure
         : exitCodes.success;
     }
@@ -150,6 +157,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     const requestId = parsedArgs.flags.request?.[0];
     const runId = parsedArgs.flags.run?.[0];
     assertSingleTarget(requestId, runId, "run");
+    // Wire SIGINT/SIGTERM so Ctrl-C translates into a cancel marker and the
+    // active session transitions to 'interrupted' cleanly.
+    installSignalCancelHandler();
+
+    const reporterFlag = parsedArgs.flags.reporter?.[0];
 
     if (requestId) {
       const result = await runRequest(requestId, {
@@ -158,6 +170,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         overrides,
       });
       writeDiagnostics(result.diagnostics);
+      await maybeWriteReporter(reporterFlag, result);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return result.session.state === "failed"
         ? exitCodes.executionFailure
@@ -171,6 +184,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
         overrides,
       });
       writeDiagnostics(result.diagnostics);
+      await maybeWriteReporter(reporterFlag, result);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return result.session.state === "failed"
         ? exitCodes.executionFailure
@@ -184,6 +198,49 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     );
   }
 
+  if (command === "snapshot") {
+    const sub = parsedArgs.positionals[1];
+    if (sub !== "accept") {
+      throw new HttpiError(
+        "SNAPSHOT_SUBCOMMAND_REQUIRED",
+        "Use httpi snapshot accept <sessionId> --step <stepId>.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    const sessionId = parsedArgs.positionals[2];
+    if (!sessionId || !stepId) {
+      throw new HttpiError(
+        "SNAPSHOT_ARGS_REQUIRED",
+        "Use httpi snapshot accept <sessionId> --step <stepId>.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    const result = await acceptSnapshotForStep(sessionId, stepId, {
+      projectRoot,
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return exitCodes.success;
+  }
+
+  if (command === "cancel") {
+    const sessionId = parsedArgs.positionals[1];
+    if (!sessionId) {
+      throw new HttpiError(
+        "SESSION_ID_REQUIRED",
+        "Use httpi cancel <sessionId>.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    const reason = parsedArgs.flags.reason?.[0];
+    const result = await cancelSessionRun(sessionId, {
+      projectRoot,
+      ...(reason ? { reason } : {}),
+      source: "cli",
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return exitCodes.success;
+  }
+
   if (command === "resume") {
     const sessionId = parsedArgs.positionals[1];
     if (!sessionId) {
@@ -194,6 +251,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       );
     }
 
+    installSignalCancelHandler();
     const result = await resumeSessionRun(sessionId, { projectRoot });
     writeDiagnostics(result.diagnostics);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -332,7 +390,9 @@ Usage:
   httpi describe --request <id> [--env <id>] [--input key=value]
   httpi describe --run <id> [--env <id>] [--input key=value]
   httpi run --request <id> [--env <id>] [--input key=value]
-  httpi run --run <id> [--env <id>] [--input key=value]
+  httpi run --run <id> [--env <id>] [--input key=value] [--reporter <spec>]
+  httpi cancel <sessionId> [--reason <text>] [--project-root <path>]
+  httpi snapshot accept <sessionId> --step <stepId> [--project-root <path>]
   httpi resume <sessionId> [--project-root <path>]
   httpi session show <sessionId> [--project-root <path>]
   httpi artifacts list <sessionId> [--step <id>] [--project-root <path>]
@@ -359,6 +419,33 @@ Examples:
 `;
 
   process.stdout.write(`${usage}\n`);
+}
+
+// F1: CI reporter. Minimal JSON reporter supported in this slice.
+// Format: --reporter json:./path.json  (shorthand `json` writes to .httpi/reports/run.json)
+// Additional formats (junit, tap, github) ship in follow-up work.
+async function maybeWriteReporter(
+  spec: string | undefined,
+  result: unknown,
+): Promise<void> {
+  if (!spec) return;
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  const { dirname, resolve: resolvePath } = await import("node:path");
+  const [rawFormat, rawPath] = spec.split(":", 2);
+  const format = (rawFormat ?? "json").toLowerCase();
+  if (format !== "json") {
+    process.stderr.write(
+      `[httpi] --reporter=${format} is not yet implemented; only 'json' ships in this release. Skipping.\n`,
+    );
+    return;
+  }
+  const target = resolvePath(
+    process.cwd(),
+    rawPath && rawPath.length > 0 ? rawPath : ".httpi/reports/run.json",
+  );
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+  process.stderr.write(`[httpi] wrote JSON reporter to ${target}\n`);
 }
 
 function parseArgs(argv: string[]): {

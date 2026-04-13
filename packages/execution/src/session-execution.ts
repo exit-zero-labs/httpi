@@ -8,11 +8,17 @@ import type {
 import {
   acquireSessionLock,
   appendSessionEvent,
+  clearSessionCancel,
   ensureRuntimePaths,
+  isSessionCancelled,
+  readSessionCancel,
+  registerActiveSession,
   releaseSessionLock,
+  unregisterActiveSession,
   writeSession,
 } from "@exit-zero-labs/httpi-runtime";
 import { toIsoTimestamp } from "@exit-zero-labs/httpi-shared";
+import { executeRequestStepIterate } from "./iterate-execution.js";
 import { getSessionStepRecord } from "./project-context.js";
 import { extractJsonPath } from "./request-outputs.js";
 import { executeRequestStep } from "./request-step-execution.js";
@@ -31,7 +37,9 @@ export async function executeSession(
   initialSession: SessionRecord,
 ): Promise<ExecutionResult> {
   await ensureRuntimePaths(projectRoot);
+  await clearSessionCancel(projectRoot, initialSession.sessionId);
   const lock = await acquireSessionLock(projectRoot, initialSession.sessionId);
+  registerActiveSession(projectRoot, initialSession.sessionId);
 
   try {
     let session = initialSession;
@@ -55,11 +63,63 @@ export async function executeSession(
     });
 
     const startIndex = findStepStartIndex(session);
+    const runStartedAt = performance.now();
+    const runTimeoutMs = session.compiled.runTimeoutMs;
     for (
       let index = startIndex;
       index < session.compiled.steps.length;
       index += 1
     ) {
+      // Per-step cancel check (A2): poll the cancel marker written by the CLI
+      // `httpi cancel` subcommand or MCP `cancel_session` tool.
+      if (await isSessionCancelled(projectRoot, session.sessionId)) {
+        const cancel = await readSessionCancel(projectRoot, session.sessionId);
+        session = {
+          ...session,
+          state: "interrupted",
+          failureReason:
+            cancel?.reason ?? `Cancelled via ${cancel?.source ?? "external"}.`,
+          updatedAt: toIsoTimestamp(),
+        };
+        await writeSession(projectRoot, session);
+        await appendSessionEvent(projectRoot, session, {
+          schemaVersion: session.schemaVersion,
+          eventType: "session.interrupted",
+          timestamp: toIsoTimestamp(),
+          sessionId: session.sessionId,
+          runId: session.runId,
+          outcome: "interrupted",
+          ...(cancel?.reason ? { message: cancel.reason } : {}),
+        });
+        return { session, diagnostics };
+      }
+
+      // Run-level timeout (A2): when the wall clock exceeds the compiled
+      // runTimeoutMs, abort the remaining steps and surface `interrupted`.
+      if (
+        typeof runTimeoutMs === "number" &&
+        runTimeoutMs > 0 &&
+        performance.now() - runStartedAt >= runTimeoutMs
+      ) {
+        session = {
+          ...session,
+          state: "interrupted",
+          failureReason: `Run exceeded timeoutMs=${runTimeoutMs}.`,
+          updatedAt: toIsoTimestamp(),
+        };
+        await writeSession(projectRoot, session);
+        await appendSessionEvent(projectRoot, session, {
+          schemaVersion: session.schemaVersion,
+          eventType: "session.interrupted",
+          timestamp: toIsoTimestamp(),
+          sessionId: session.sessionId,
+          runId: session.runId,
+          outcome: "interrupted",
+          message: `run timeout ${runTimeoutMs}ms`,
+        });
+        return { session, diagnostics };
+      }
+
       const topLevelStep = session.compiled.steps[index];
       if (!topLevelStep) {
         continue;
@@ -103,6 +163,19 @@ export async function executeSession(
             : topLevelStep.id,
         };
         diagnostics.push(...parallelOutcome.diagnostics);
+      } else if (topLevelStep.kind === "switch") {
+        const switchOutcome = await executeSwitchStep(
+          projectRoot,
+          session,
+          topLevelStep,
+        );
+        session = {
+          ...switchOutcome.session,
+          nextStepId: switchOutcome.success
+            ? nextTopLevelStep?.id
+            : topLevelStep.id,
+        };
+        diagnostics.push(...switchOutcome.diagnostics);
       } else if (topLevelStep.kind === "pollUntil") {
         const pollOutcome = await executePollUntilStep(
           projectRoot,
@@ -117,11 +190,13 @@ export async function executeSession(
         };
         diagnostics.push(...pollOutcome.diagnostics);
       } else {
-        const requestOutcome = await executeRequestStepWithRetry(
-          projectRoot,
-          session,
-          topLevelStep,
-        );
+        const requestOutcome = topLevelStep.iterate
+          ? await executeRequestStepIterate(projectRoot, session, topLevelStep)
+          : await executeRequestStepWithRetry(
+              projectRoot,
+              session,
+              topLevelStep,
+            );
         session = {
           ...requestOutcome.session,
           nextStepId: requestOutcome.success
@@ -163,6 +238,7 @@ export async function executeSession(
       diagnostics,
     };
   } finally {
+    unregisterActiveSession(projectRoot, initialSession.sessionId);
     await releaseSessionLock(lock);
   }
 }
@@ -212,11 +288,36 @@ async function executeParallelStep(
 
   // Child results stay in memory here and are merged back into one persisted
   // parent session after the parallel block settles.
-  const childResults = await Promise.all(
-    step.steps.map(async (childStep) =>
-      executeRequestStep(projectRoot, runningSession, childStep, false),
-    ),
-  );
+  // C7: honor declared concurrency cap; `undefined` = unbounded (original
+  // fan-out behavior via Promise.all).
+  const cap = step.concurrency;
+  const childResults: Array<Awaited<ReturnType<typeof executeRequestStep>>> =
+    new Array(step.steps.length);
+  if (!cap || cap <= 0 || cap >= step.steps.length) {
+    const settled = await Promise.all(
+      step.steps.map(async (childStep) =>
+        executeRequestStep(projectRoot, runningSession, childStep, false),
+      ),
+    );
+    for (let i = 0; i < settled.length; i++) childResults[i] = settled[i]!;
+  } else {
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: cap }, async () => {
+        while (true) {
+          const index = cursor++;
+          if (index >= step.steps.length) return;
+          const childStep = step.steps[index]!;
+          childResults[index] = await executeRequestStep(
+            projectRoot,
+            runningSession,
+            childStep,
+            false,
+          );
+        }
+      }),
+    );
+  }
 
   let nextSession = runningSession;
   let success = true;
@@ -495,6 +596,95 @@ function evaluatePollCondition(
     return true;
   }
   return false;
+}
+
+async function executeSwitchStep(
+  projectRoot: string,
+  session: SessionRecord,
+  step: import("@exit-zero-labs/httpi-contracts").CompiledSwitchStep,
+): Promise<RequestExecutionOutcome> {
+  const diagnostics: import("@exit-zero-labs/httpi-contracts").EnrichedDiagnostic[] =
+    [];
+  let currentSession = session;
+  const value = resolveSwitchRef(step.on, currentSession);
+  await appendSessionEvent(projectRoot, currentSession, {
+    schemaVersion: currentSession.schemaVersion,
+    eventType: "step.switch.evaluated",
+    timestamp: toIsoTimestamp(),
+    sessionId: currentSession.sessionId,
+    runId: currentSession.runId,
+    stepId: step.id,
+    outcome: "running",
+    message: `on=${step.on} value=${JSON.stringify(value)}`,
+  });
+
+  const matchedSteps = pickSwitchBranch(step, value);
+  if (matchedSteps === undefined) {
+    // No case matched and no default — step succeeds with a no-op.
+    return { session: currentSession, success: true, diagnostics };
+  }
+
+  for (const child of matchedSteps) {
+    const outcome = child.iterate
+      ? await executeRequestStepIterate(projectRoot, currentSession, child)
+      : await executeRequestStepWithRetry(projectRoot, currentSession, child);
+    currentSession = outcome.session;
+    diagnostics.push(...outcome.diagnostics);
+    if (!outcome.success) {
+      return { session: currentSession, success: false, diagnostics };
+    }
+  }
+  return { session: currentSession, success: true, diagnostics };
+}
+
+function pickSwitchBranch(
+  step: import("@exit-zero-labs/httpi-contracts").CompiledSwitchStep,
+  value: unknown,
+): import("@exit-zero-labs/httpi-contracts").CompiledRequestStep[] | undefined {
+  for (const c of step.cases) {
+    const expected = c.when;
+    const matched = Array.isArray(expected)
+      ? expected.some((e) => JSON.stringify(e) === JSON.stringify(value))
+      : JSON.stringify(expected) === JSON.stringify(value);
+    if (matched) return c.steps;
+  }
+  return step.defaultSteps;
+}
+
+function resolveSwitchRef(ref: string, session: SessionRecord): unknown {
+  // Supported:
+  //   steps.<id>.response.status
+  //   steps.<id>.response.headers["x-foo"]
+  //   steps.<id>.extracted.<name>
+  const statusMatch = ref.match(/^steps\.([A-Za-z0-9_-]+)\.response\.status$/);
+  if (statusMatch) {
+    const stepId = statusMatch[1]!;
+    const record = session.stepRecords[stepId];
+    const lastAttempt = record?.attempts[record.attempts.length - 1];
+    return lastAttempt?.statusCode;
+  }
+  const headerMatch = ref.match(
+    /^steps\.([A-Za-z0-9_-]+)\.response\.headers\["(.+?)"\]$/,
+  );
+  if (headerMatch) {
+    // Header values live in captured artifacts, not the session record in v1.
+    // Resolve via the step's stepOutputs where response headers are extracted
+    // to, if any; otherwise return undefined.
+    const stepId = headerMatch[1]!;
+    const headerName = headerMatch[2]!.toLowerCase();
+    const output = session.stepOutputs[stepId] ?? {};
+    return output[`response.headers.${headerName}`];
+  }
+  const extractedMatch = ref.match(
+    /^steps\.([A-Za-z0-9_-]+)\.extracted\.([A-Za-z0-9_-]+)$/,
+  );
+  if (extractedMatch) {
+    const stepId = extractedMatch[1]!;
+    const name = extractedMatch[2]!;
+    const output = session.stepOutputs[stepId] ?? {};
+    return output[name];
+  }
+  return undefined;
 }
 
 function sleep(ms: number): Promise<void> {

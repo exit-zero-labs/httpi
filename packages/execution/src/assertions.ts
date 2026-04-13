@@ -1,4 +1,5 @@
 import type {
+  AggregateExpectation,
   AssertionResult,
   BodyExpectation,
   HeaderMatcher,
@@ -8,7 +9,201 @@ import type {
   LatencyMatcher,
   RequestExpectation,
 } from "@exit-zero-labs/httpi-contracts";
+import { loadJsonSchema, validateAgainstSchema } from "./json-schema.js";
+import type { AggregateSummary } from "./percentiles.js";
 import { extractJsonPath } from "./request-outputs.js";
+import { evaluateSnapshotAssertion } from "./snapshot.js";
+
+export interface SchemaAssertionContext {
+  projectRoot: string;
+  requestFilePath?: string | undefined;
+}
+
+export async function evaluateSchemaAssertions(
+  expect: RequestExpectation,
+  exchange: HttpExecutionResult,
+  ctx: SchemaAssertionContext,
+): Promise<AssertionResult[]> {
+  const results: AssertionResult[] = [];
+  const schemaOptions = {
+    projectRoot: ctx.projectRoot,
+    ...(ctx.requestFilePath ? { baseFilePath: ctx.requestFilePath } : {}),
+  };
+
+  // Stream finalAssembled schema (A1)
+  if (
+    expect.stream?.finalAssembled?.kind === "json-schema" &&
+    exchange.stream
+  ) {
+    // Prefer assembledLast for SSE/NDJSON (the terminal frame), fall back to
+    // assembledJson and then the raw text. This matches the AI use case where
+    // the final frame is the validated document.
+    const instance =
+      exchange.stream.assembledLast !== undefined
+        ? exchange.stream.assembledLast
+        : exchange.stream.assembledJson !== undefined
+          ? exchange.stream.assembledJson
+          : safeParseJson(exchange.stream.assembledText ?? "");
+    try {
+      const schema = await loadJsonSchema(
+        expect.stream.finalAssembled.schema,
+        schemaOptions,
+      );
+      const schemaResults = validateAgainstSchema(schema, instance, {
+        basePath: "stream.finalAssembled",
+        matcher: "json-schema",
+      });
+      for (const r of schemaResults) if (!r.passed) results.push(r);
+    } catch (error) {
+      results.push({
+        path: "stream.finalAssembled",
+        matcher: "json-schema.load",
+        expected: expect.stream.finalAssembled.schema,
+        actual: error instanceof Error ? error.message : "schema load failure",
+        passed: false,
+      });
+    }
+  }
+
+  // B3 snapshot assertion — uses masked JSON Patch diff.
+  if (expect.body?.kind === "snapshot" && expect.body.file) {
+    const snapshotResults = await evaluateSnapshotAssertion(
+      expect.body,
+      exchange,
+      {
+        projectRoot: ctx.projectRoot,
+        ...(ctx.requestFilePath
+          ? { requestFilePath: ctx.requestFilePath }
+          : {}),
+      },
+    );
+    for (const r of snapshotResults) if (!r.passed) results.push(r);
+  }
+
+  // Body json-schema (B1/B3)
+  if (expect.body?.kind === "json-schema" && expect.body.schema) {
+    const bodyText = exchange.response.bodyText ?? "";
+    const instance = safeParseJson(bodyText);
+    try {
+      const schema = await loadJsonSchema(expect.body.schema, schemaOptions);
+      const schemaResults = validateAgainstSchema(schema, instance, {
+        basePath: "body",
+        matcher: "json-schema",
+      });
+      for (const r of schemaResults) if (!r.passed) results.push(r);
+    } catch (error) {
+      results.push({
+        path: "body",
+        matcher: "json-schema.load",
+        expected: expect.body.schema,
+        actual: error instanceof Error ? error.message : "schema load failure",
+        passed: false,
+      });
+    }
+  }
+
+  return results;
+}
+
+export function evaluateAggregateAssertions(
+  expect: AggregateExpectation,
+  summary: AggregateSummary,
+): AssertionResult[] {
+  const results: AssertionResult[] = [];
+  if (expect.latencyMs) {
+    const p = expect.latencyMs;
+    if (p.p50) {
+      results.push(
+        ...compareLatency(
+          "aggregate.latencyMs.p50",
+          p.p50,
+          summary.latencyMs.p50,
+        ),
+      );
+    }
+    if (p.p95) {
+      results.push(
+        ...compareLatency(
+          "aggregate.latencyMs.p95",
+          p.p95,
+          summary.latencyMs.p95,
+        ),
+      );
+    }
+    if (p.p99) {
+      results.push(
+        ...compareLatency(
+          "aggregate.latencyMs.p99",
+          p.p99,
+          summary.latencyMs.p99,
+        ),
+      );
+    }
+  }
+  if (expect.errorRate) {
+    results.push(
+      ...compareLatency(
+        "aggregate.errorRate",
+        expect.errorRate,
+        summary.errorRate,
+      ),
+    );
+  }
+  return results;
+}
+
+function compareLatency(
+  path: string,
+  matcher: LatencyMatcher,
+  actual: number,
+): AssertionResult[] {
+  const out: AssertionResult[] = [];
+  if (matcher.lt !== undefined) {
+    out.push({
+      path,
+      matcher: "lt",
+      expected: matcher.lt,
+      actual,
+      passed: actual < matcher.lt,
+    });
+  }
+  if (matcher.lte !== undefined) {
+    out.push({
+      path,
+      matcher: "lte",
+      expected: matcher.lte,
+      actual,
+      passed: actual <= matcher.lte,
+    });
+  }
+  if (matcher.gt !== undefined) {
+    out.push({
+      path,
+      matcher: "gt",
+      expected: matcher.gt,
+      actual,
+      passed: actual > matcher.gt,
+    });
+  }
+  if (matcher.gte !== undefined) {
+    out.push({
+      path,
+      matcher: "gte",
+      expected: matcher.gte,
+      actual,
+      passed: actual >= matcher.gte,
+    });
+  }
+  return out;
+}
+
+function safeParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 export function evaluateAssertions(
   expect: RequestExpectation,

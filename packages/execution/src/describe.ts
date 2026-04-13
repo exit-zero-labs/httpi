@@ -33,6 +33,21 @@ export function describeCompiledStep(
     };
   }
 
+  if (step.kind === "switch") {
+    return {
+      id: step.id,
+      kind: step.kind,
+      children: [
+        ...step.cases.flatMap((c) =>
+          c.steps.map((child) => describeCompiledStep(child)),
+        ),
+        ...(step.defaultSteps
+          ? step.defaultSteps.map((child) => describeCompiledStep(child))
+          : []),
+      ],
+    };
+  }
+
   return {
     id: step.id,
     kind: step.kind,

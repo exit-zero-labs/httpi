@@ -388,12 +388,29 @@ export interface AssertionResult {
   passed: boolean;
 }
 
+export interface IterateConfig {
+  count: number;
+  concurrency?: number | undefined;
+}
+
+export interface PercentileMatcher {
+  p50?: LatencyMatcher | undefined;
+  p95?: LatencyMatcher | undefined;
+  p99?: LatencyMatcher | undefined;
+}
+
+export interface AggregateExpectation {
+  latencyMs?: PercentileMatcher | undefined;
+  errorRate?: LatencyMatcher | undefined;
+}
+
 export interface RequestExpectation {
   status?: number | number[] | undefined;
   latencyMs?: LatencyMatcher | undefined;
   headers?: Record<string, HeaderMatcher | string> | undefined;
   body?: BodyExpectation | undefined;
   stream?: StreamAssertions | undefined;
+  aggregate?: AggregateExpectation | undefined;
 }
 
 export interface ExtractionDefinition {
@@ -472,6 +489,7 @@ export interface RunRequestStepDefinition {
   with?: FlatVariableMap | undefined;
   retry?: RetryPolicy | undefined;
   idempotency?: IdempotencyConfig | undefined;
+  iterate?: IterateConfig | undefined;
 }
 
 export interface RunPollUntilStepDefinition {
@@ -490,6 +508,7 @@ export interface RunPollUntilStepDefinition {
 export interface RunParallelStepDefinition {
   kind: "parallel";
   id: string;
+  concurrency?: number | undefined;
   steps: RunRequestStepDefinition[];
 }
 
@@ -499,11 +518,36 @@ export interface RunPauseStepDefinition {
   reason: string;
 }
 
+// C2 switch step — closed DSL, no user code.
+export interface SwitchExpression {
+  /**
+   * A dotted reference into run context. Supported forms:
+   *   steps.<id>.response.status
+   *   steps.<id>.response.headers["x-foo"]
+   *   steps.<id>.extracted.<name>
+   */
+  ref: string;
+}
+
+export interface SwitchCase {
+  when: JsonValue | JsonValue[];
+  steps: RunRequestStepDefinition[];
+}
+
+export interface RunSwitchStepDefinition {
+  kind: "switch";
+  id: string;
+  on: string;
+  cases: SwitchCase[];
+  default?: { steps: RunRequestStepDefinition[] } | undefined;
+}
+
 export type RunStepDefinition =
   | RunRequestStepDefinition
   | RunParallelStepDefinition
   | RunPauseStepDefinition
-  | RunPollUntilStepDefinition;
+  | RunPollUntilStepDefinition
+  | RunSwitchStepDefinition;
 
 export interface RunDefinition {
   kind: "run";
@@ -606,11 +650,13 @@ export interface CompiledRequestStep {
   request: CompiledRequestDefinition;
   retry?: RetryPolicy | undefined;
   idempotency?: IdempotencyConfig | undefined;
+  iterate?: IterateConfig | undefined;
 }
 
 export interface CompiledParallelStep {
   kind: "parallel";
   id: string;
+  concurrency?: number | undefined;
   steps: CompiledRequestStep[];
 }
 
@@ -630,11 +676,25 @@ export interface CompiledPollUntilStep {
   timeoutMs?: number | undefined;
 }
 
+export interface CompiledSwitchCase {
+  when: JsonValue | JsonValue[];
+  steps: CompiledRequestStep[];
+}
+
+export interface CompiledSwitchStep {
+  kind: "switch";
+  id: string;
+  on: string;
+  cases: CompiledSwitchCase[];
+  defaultSteps?: CompiledRequestStep[] | undefined;
+}
+
 export type CompiledRunStep =
   | CompiledRequestStep
   | CompiledParallelStep
   | CompiledPauseStep
-  | CompiledPollUntilStep;
+  | CompiledPollUntilStep
+  | CompiledSwitchStep;
 
 export interface CompiledRunSnapshot {
   schemaVersion: typeof schemaVersion;
@@ -656,6 +716,7 @@ export interface CompiledRunSnapshot {
   definitionHashes: Record<string, string>;
   steps: CompiledRunStep[];
   envGuards?: EnvironmentGuards | undefined;
+  runTimeoutMs?: number | undefined;
   createdAt: string;
 }
 
@@ -688,6 +749,9 @@ export interface StepArtifactSummary {
   bodyPath?: string | undefined;
   streamChunksPath?: string | undefined;
   streamAssembledPath?: string | undefined;
+  binaryPath?: string | undefined;
+  binarySha256?: string | undefined;
+  binaryBytes?: number | undefined;
 }
 
 export interface StepAttemptRecord {
@@ -758,11 +822,13 @@ export interface ArtifactManifestEntry {
     | "response.meta"
     | "body"
     | "stream.chunks"
-    | "stream.assembled";
+    | "stream.assembled"
+    | "response.binary";
   relativePath: string;
   contentType?: string | undefined;
   sha256?: string | undefined;
   size?: number | undefined;
+  sizeBytes?: number | undefined;
 }
 
 export interface ArtifactManifest {
@@ -788,6 +854,27 @@ export interface ResolvedRequestModel {
   secretValues: string[];
   responseMode?: ResponseMode | undefined;
   streamConfig?: StreamConfig | undefined;
+  // Binary response (A3): where to write the downloaded file and the upper
+  // byte limit. Paths are relative to the project root and enforced to stay
+  // within `.httpi/` by the executor.
+  saveTo?: string | undefined;
+  responseMaxBytes?: number | undefined;
+}
+
+export interface StreamEventHooks {
+  onFirstByte?: (info: { tOffsetMs: number }) => void;
+  onChunk?: (chunk: StreamChunkRecord) => void;
+  onCompleted?: (info: {
+    totalChunks: number;
+    totalBytes: number;
+    durationMs: number;
+  }) => void;
+  onFailed?: (info: { errorClass: string; message: string }) => void;
+}
+
+export interface HttpExecutionHooks {
+  shouldCancel?: () => boolean | Promise<boolean>;
+  stream?: StreamEventHooks;
 }
 
 export interface HttpExecutionResult {
@@ -812,10 +899,24 @@ export interface HttpExecutionResult {
         chunks: StreamChunkRecord[];
         assembledText?: string | undefined;
         assembledJson?: JsonValue | undefined;
+        // A1 (AI use case): the last parsed event's JSON value, convenient for
+        // validating the terminal frame of an SSE/NDJSON stream against
+        // `expect.stream.finalAssembled` without having to index into the
+        // full array. Undefined if no event parsed as JSON.
+        assembledLast?: JsonValue | undefined;
         firstChunkMs?: number | undefined;
         maxInterChunkMs?: number | undefined;
         totalChunks: number;
         totalBytes: number;
+      }
+    | undefined;
+  binary?:
+    | {
+        absolutePath: string;
+        relativePath: string;
+        bytes: number;
+        sha256: string;
+        truncated: boolean;
       }
     | undefined;
   durationMs: number;

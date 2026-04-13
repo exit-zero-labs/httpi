@@ -290,6 +290,48 @@ function parseOptionalExpect(
     }
   }
 
+  // Aggregate (B6) — percentile + errorRate matchers. Evaluated only when
+  // the step declares `iterate`; otherwise harmlessly ignored by the executor.
+  if (record.aggregate !== undefined) {
+    const aggRecord = asRecord(record.aggregate);
+    if (aggRecord) {
+      const latencyRec = asRecord(aggRecord.latencyMs);
+      const errorRateRec = asRecord(aggRecord.errorRate);
+      const percentile = (
+        raw: unknown,
+      ):
+        | { lt?: number; lte?: number; gt?: number; gte?: number }
+        | undefined => {
+        const rec = asRecord(raw);
+        if (!rec) return undefined;
+        return {
+          ...(typeof rec.lt === "number" ? { lt: rec.lt } : {}),
+          ...(typeof rec.lte === "number" ? { lte: rec.lte } : {}),
+          ...(typeof rec.gt === "number" ? { gt: rec.gt } : {}),
+          ...(typeof rec.gte === "number" ? { gte: rec.gte } : {}),
+        };
+      };
+      result.aggregate = {
+        ...(latencyRec
+          ? {
+              latencyMs: {
+                ...(latencyRec.p50 !== undefined
+                  ? { p50: percentile(latencyRec.p50) }
+                  : {}),
+                ...(latencyRec.p95 !== undefined
+                  ? { p95: percentile(latencyRec.p95) }
+                  : {}),
+                ...(latencyRec.p99 !== undefined
+                  ? { p99: percentile(latencyRec.p99) }
+                  : {}),
+              },
+            }
+          : {}),
+        ...(errorRateRec ? { errorRate: percentile(aggRecord.errorRate) } : {}),
+      };
+    }
+  }
+
   // Stream assertions (A1)
   if (record.stream !== undefined) {
     const streamRecord = asRecord(record.stream);
@@ -308,6 +350,29 @@ function parseOptionalExpect(
             ? streamRecord.minChunks
             : undefined,
       };
+    }
+  }
+
+  // B1 unknown-matcher rejection: emit structured diagnostics for any top-level
+  // key in `expect` that is not part of the closed vocabulary. This prevents
+  // silent typos like `fuzzyMatch:` from skipping validation at runtime.
+  const knownExpectKeys = new Set([
+    "status",
+    "latencyMs",
+    "headers",
+    "body",
+    "stream",
+    "aggregate",
+  ]);
+  for (const key of Object.keys(record)) {
+    if (!knownExpectKeys.has(key)) {
+      diagnostics.push({
+        level: "error",
+        code: "UNKNOWN_EXPECT_KEY",
+        message: `expect.${key} is not a known matcher. Valid top-level keys: ${[...knownExpectKeys].join(", ")}.`,
+        filePath,
+        path: appendDiagnosticPath("expect", key),
+      });
     }
   }
 
@@ -827,12 +892,59 @@ function parseOptionalResponseConfig(
     }
   }
 
+  const saveTo = typeof record.saveTo === "string" ? record.saveTo : undefined;
+  warnIfSaveToEscapesHttpi(saveTo, filePath, diagnostics);
   return {
     mode,
     stream,
-    saveTo: typeof record.saveTo === "string" ? record.saveTo : undefined,
+    saveTo,
     maxBytes: typeof record.maxBytes === "number" ? record.maxBytes : undefined,
   };
+}
+
+function warnIfSaveToEscapesHttpi(
+  saveTo: string | undefined,
+  filePath: string,
+  diagnostics: Diagnostic[],
+): void {
+  if (!saveTo) return;
+  // Normalise both separator conventions up front so a mixed-separator
+  // traversal like "..\\.httpi\\..\\etc\\passwd" on Windows still classifies
+  // via the same OS-agnostic rules.
+  const normalized = saveTo.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter((s) => s.length > 0);
+  const isAbsolute =
+    normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
+  const hasParentTraversal = segments.some((seg) => seg === "..");
+  const outsideHttpi =
+    !normalized.startsWith(".httpi/") && !normalized.startsWith("./.httpi/");
+
+  // Security: an absolute path or one that climbs above the project root is
+  // a filesystem write primitive (can overwrite arbitrary files). Escalate
+  // to an error to block the run unless the path is clearly inside the
+  // project tree.
+  if (isAbsolute || hasParentTraversal) {
+    diagnostics.push({
+      level: "error",
+      code: "BINARY_SAVE_TO_UNSAFE_PATH",
+      message: `response.saveTo=${saveTo} would resolve outside the project tree. Use a path inside .httpi/ (recommended) or a project-relative directory.`,
+      filePath,
+      path: "response.saveTo",
+    });
+    return;
+  }
+
+  // Path stays inside the project but outside .httpi/: allowed, warn so the
+  // reviewer notices the explicit opt-out of the runtime sandbox.
+  if (outsideHttpi) {
+    diagnostics.push({
+      level: "warning",
+      code: "BINARY_SAVE_TO_OUTSIDE_HTTPI",
+      message: `response.saveTo=${saveTo} writes outside .httpi/. This is allowed but bypasses the default runtime sandbox — double-check that the target directory is intended and owned by this project.`,
+      filePath,
+      path: "response.saveTo",
+    });
+  }
 }
 
 function parseBodyExpectation(

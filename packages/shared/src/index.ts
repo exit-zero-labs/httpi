@@ -354,6 +354,36 @@ export function redactText(
   return redacted;
 }
 
+export function redactJsonValue<T>(
+  value: T,
+  secretValues: Iterable<string>,
+): T {
+  const secrets = [...new Set(secretValues)].filter(
+    (s) => s.length > 0 && s !== redactedValue,
+  );
+  if (secrets.length === 0) return value;
+  return walk(value, secrets) as T;
+}
+
+function walk(v: unknown, secrets: string[]): unknown {
+  if (typeof v === "string") {
+    let out = v;
+    for (const s of secrets) {
+      if (out.includes(s)) out = out.split(s).join(redactedValue);
+    }
+    return out;
+  }
+  if (Array.isArray(v)) return v.map((item) => walk(item, secrets));
+  if (v && typeof v === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, item] of Object.entries(v as Record<string, unknown>)) {
+      result[k] = walk(item, secrets);
+    }
+    return result;
+  }
+  return v;
+}
+
 export function redactHeaders(
   headers: Record<string, string>,
   headerNames: Iterable<string>,

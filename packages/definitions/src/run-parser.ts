@@ -157,6 +157,19 @@ function parseRunSteps(
       return steps;
     }
 
+    if (kind === "switch") {
+      const switchStep = parseRunSwitchStep(
+        stepRecord,
+        filePath,
+        diagnostics,
+        stepPath,
+      );
+      if (switchStep) {
+        steps.push(switchStep);
+      }
+      return steps;
+    }
+
     diagnostics.push({
       level: "error",
       code: "INVALID_STEP_KIND",
@@ -213,6 +226,12 @@ function parseRunRequestStep(
     diagnostics,
     path,
   );
+  const iterate = parseOptionalIterate(
+    record.iterate,
+    filePath,
+    diagnostics,
+    path,
+  );
 
   return {
     kind: "request",
@@ -221,7 +240,47 @@ function parseRunRequestStep(
     with: withValues,
     retry,
     idempotency,
+    iterate,
   };
+}
+
+function parseOptionalIterate(
+  value: unknown,
+  filePath: string,
+  diagnostics: Diagnostic[],
+  path: string,
+): import("@exit-zero-labs/httpi-contracts").IterateConfig | undefined {
+  if (value === undefined) return undefined;
+  const record = asRecord(value);
+  if (!record) {
+    diagnostics.push({
+      level: "error",
+      code: "INVALID_ITERATE",
+      message: "iterate must be an object when present.",
+      filePath,
+      path: appendDiagnosticPath(path, "iterate"),
+    });
+    return undefined;
+  }
+  const count =
+    typeof record.count === "number" && record.count > 0
+      ? Math.floor(record.count)
+      : undefined;
+  if (count === undefined) {
+    diagnostics.push({
+      level: "error",
+      code: "INVALID_ITERATE_COUNT",
+      message: "iterate.count must be a positive integer.",
+      filePath,
+      path: appendDiagnosticPath(path, "iterate.count"),
+    });
+    return undefined;
+  }
+  const concurrency =
+    typeof record.concurrency === "number" && record.concurrency > 0
+      ? Math.floor(record.concurrency)
+      : undefined;
+  return { count, ...(concurrency ? { concurrency } : {}) };
 }
 
 function parseRunPauseStep(
@@ -333,10 +392,141 @@ function parseRunParallelStep(
     return undefined;
   }
 
+  const concurrency =
+    typeof record.concurrency === "number" && record.concurrency > 0
+      ? Math.floor(record.concurrency)
+      : undefined;
   return {
     kind: "parallel",
     id,
     steps,
+    ...(concurrency ? { concurrency } : {}),
+  };
+}
+
+const SWITCH_REF_PATTERN =
+  /^steps\.[A-Za-z0-9_-]+\.(?:response\.(?:status|headers\[".+?"\])|extracted\.[A-Za-z0-9_-]+)$/;
+
+function parseRunSwitchStep(
+  record: Record<string, unknown>,
+  filePath: string,
+  diagnostics: Diagnostic[],
+  path: string,
+):
+  | import("@exit-zero-labs/httpi-contracts").RunSwitchStepDefinition
+  | undefined {
+  const id = readRequiredString(
+    record,
+    "id",
+    filePath,
+    diagnostics,
+    "Switch steps require a string id.",
+    path,
+  );
+  const on = typeof record.on === "string" ? record.on : undefined;
+  if (!on) {
+    diagnostics.push({
+      level: "error",
+      code: "INVALID_SWITCH_ON",
+      message: "switch.on must be a string reference.",
+      filePath,
+      path: appendDiagnosticPath(path, "on"),
+    });
+  } else if (!SWITCH_REF_PATTERN.test(on)) {
+    diagnostics.push({
+      level: "error",
+      code: "INVALID_SWITCH_EXPRESSION",
+      message: `switch.on=${on} is not in the supported vocabulary. Use steps.<id>.response.status | steps.<id>.response.headers["x"] | steps.<id>.extracted.<name>.`,
+      filePath,
+      path: appendDiagnosticPath(path, "on"),
+    });
+  }
+
+  const casesValue = record.cases;
+  if (!Array.isArray(casesValue)) {
+    diagnostics.push({
+      level: "error",
+      code: "INVALID_SWITCH_CASES",
+      message: "switch.cases must be an array.",
+      filePath,
+      path: appendDiagnosticPath(path, "cases"),
+    });
+    return undefined;
+  }
+  const cases = casesValue.flatMap((entry, i) => {
+    const casePath = appendDiagnosticPath(
+      appendDiagnosticPath(path, "cases"),
+      i,
+    );
+    const rec = asRecord(entry);
+    if (!rec) return [];
+    if (rec.when === undefined) {
+      diagnostics.push({
+        level: "error",
+        code: "INVALID_SWITCH_CASE",
+        message: "switch case requires `when` value.",
+        filePath,
+        path: casePath,
+      });
+      return [];
+    }
+    const innerSteps = Array.isArray(rec.steps)
+      ? rec.steps.flatMap((child, j) => {
+          const childPath = appendDiagnosticPath(
+            appendDiagnosticPath(casePath, "steps"),
+            j,
+          );
+          const childRec = asRecord(child);
+          if (!childRec) return [];
+          const step = parseRunRequestStep(
+            childRec,
+            filePath,
+            diagnostics,
+            childPath,
+          );
+          return step ? [step] : [];
+        })
+      : [];
+    return [
+      {
+        when: rec.when as import("@exit-zero-labs/httpi-contracts").JsonValue,
+        steps: innerSteps,
+      },
+    ];
+  });
+
+  let defaultBlock:
+    | {
+        steps: import("@exit-zero-labs/httpi-contracts").RunRequestStepDefinition[];
+      }
+    | undefined;
+  const defaultRec = asRecord(record.default);
+  if (defaultRec && Array.isArray(defaultRec.steps)) {
+    const defaultSteps = defaultRec.steps.flatMap((child, j) => {
+      const childPath = appendDiagnosticPath(
+        appendDiagnosticPath(path, "default.steps"),
+        j,
+      );
+      const childRec = asRecord(child);
+      if (!childRec) return [];
+      const step = parseRunRequestStep(
+        childRec,
+        filePath,
+        diagnostics,
+        childPath,
+      );
+      return step ? [step] : [];
+    });
+    defaultBlock = { steps: defaultSteps };
+  }
+
+  if (!id || !on) return undefined;
+  return {
+    kind: "switch",
+    id,
+    on,
+    cases,
+    ...(defaultBlock ? { default: defaultBlock } : {}),
   };
 }
 

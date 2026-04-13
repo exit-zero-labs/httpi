@@ -2,10 +2,12 @@
 
 import { isDiagnostic } from "@exit-zero-labs/httpi-contracts";
 import {
+  cancelSessionRun,
   describeRequest,
   describeRun,
   explainVariables,
   getSessionState,
+  getSessionStreamChunks,
   listProjectDefinitions,
   listSessionArtifacts,
   readSessionArtifact,
@@ -144,6 +146,25 @@ const executionOutputSchema = {
 const artifactListOutputSchema = {
   sessionId: z.string().optional(),
   artifacts: z.array(artifactEntrySchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const streamChunkSchema = z.object({
+  seq: z.number(),
+  tOffsetMs: z.number(),
+  bytes: z.number(),
+  preview: z.string(),
+});
+
+const streamChunksOutputSchema = {
+  sessionId: z.string().optional(),
+  stepId: z.string().optional(),
+  attempt: z.number().optional(),
+  relativePath: z.string().optional(),
+  totalChunks: z.number().optional(),
+  chunks: z.array(streamChunkSchema).optional(),
+  range: z.object({ start: z.number(), end: z.number() }).optional(),
   code: z.string().optional(),
   message: z.string().optional(),
 };
@@ -353,6 +374,72 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "cancel_session",
+    {
+      description:
+        "Request cancellation of a session. Writes a cancel marker and transitions runnable sessions to 'interrupted'. Already-captured artifacts are preserved.",
+      inputSchema: {
+        sessionId: z.string(),
+        reason: z.string().optional(),
+        ...engineOptionsSchema,
+      },
+      outputSchema: {
+        sessionId: z.string().optional(),
+        state: z.string().optional(),
+        cancel: z
+          .object({
+            sessionId: z.string(),
+            requestedAt: z.string(),
+            reason: z.string().optional(),
+            source: z.string().optional(),
+          })
+          .optional(),
+        code: z.string().optional(),
+        message: z.string().optional(),
+      },
+    },
+    async ({ sessionId, reason, projectRoot }) =>
+      handleTool(async () =>
+        cancelSessionRun(sessionId, {
+          projectRoot,
+          ...(reason ? { reason } : {}),
+          source: "mcp",
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "get_stream_chunks",
+    {
+      description:
+        "Read captured streaming chunks (chunks.jsonl) for a given session step. Optional range [start,end) slices the sequence.",
+      inputSchema: {
+        sessionId: z.string(),
+        stepId: z.string(),
+        rangeStart: z.number().int().nonnegative().optional(),
+        rangeEnd: z.number().int().nonnegative().optional(),
+        ...engineOptionsSchema,
+      },
+      outputSchema: streamChunksOutputSchema,
+    },
+    async ({ sessionId, stepId, rangeStart, rangeEnd, projectRoot }) =>
+      handleTool(async () => {
+        const hasRange = rangeStart !== undefined || rangeEnd !== undefined;
+        return getSessionStreamChunks(sessionId, stepId, {
+          projectRoot,
+          ...(hasRange
+            ? {
+                range: {
+                  ...(rangeStart !== undefined ? { start: rangeStart } : {}),
+                  ...(rangeEnd !== undefined ? { end: rangeEnd } : {}),
+                },
+              }
+            : {}),
+        });
+      }),
+  );
+
+  server.registerTool(
     "explain_variables",
     {
       description:
@@ -490,6 +577,8 @@ Core tools:
   get_session_state  Read persisted session state and drift details.
   list_artifacts     List captured artifacts for a session or one step.
   read_artifact      Read one captured artifact with redaction applied.
+  get_stream_chunks  Read captured stream chunks (chunks.jsonl) for a session step, with optional range.
+  cancel_session     Request cancellation of a session; transitions runnable sessions to 'interrupted'.
   explain_variables  Show effective values and provenance for a request or run step.
 
 Docs:

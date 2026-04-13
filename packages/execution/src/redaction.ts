@@ -133,6 +133,35 @@ function redactCompiledStep(
     };
   }
 
+  if (step.kind === "switch") {
+    return {
+      ...step,
+      cases: step.cases.map((c) => ({
+        ...c,
+        steps: c.steps.map((childStep) => ({
+          ...childStep,
+          with: redactFlatVariableMap(childStep.with, secretWithKeys),
+          request: {
+            ...childStep.request,
+            defaults: redactFlatVariableMap(childStep.request.defaults),
+          },
+        })),
+      })),
+      ...(step.defaultSteps
+        ? {
+            defaultSteps: step.defaultSteps.map((childStep) => ({
+              ...childStep,
+              with: redactFlatVariableMap(childStep.with, secretWithKeys),
+              request: {
+                ...childStep.request,
+                defaults: redactFlatVariableMap(childStep.request.defaults),
+              },
+            })),
+          }
+        : {}),
+    };
+  }
+
   return {
     ...step,
     with: redactFlatVariableMap(step.with, secretWithKeys),

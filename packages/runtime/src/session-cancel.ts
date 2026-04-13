@@ -1,0 +1,185 @@
+import { readFile, writeFile } from "node:fs/promises";
+import {
+  exitCodes,
+  fileExists,
+  HttpiError,
+  removeFileIfExists,
+  resolveFromRoot,
+  toIsoTimestamp,
+} from "@exit-zero-labs/httpi-shared";
+import {
+  assertValidSessionId,
+  ensureRuntimePaths,
+  runtimeFileMode,
+} from "./runtime-paths.js";
+
+/**
+ * Cross-process cancellation signal for a session. The CLI `httpi cancel` and
+ * MCP `cancel_session` write a marker file that the executing run polls at
+ * step boundaries and stream read-loop iterations.
+ *
+ * Layout: `.httpi/sessions/<sessionId>.cancel`
+ */
+
+export interface SessionCancelRecord {
+  sessionId: string;
+  requestedAt: string;
+  reason?: string;
+  source?: string;
+}
+
+function cancelMarkerPath(runtimeDir: string, sessionId: string): string {
+  return resolveFromRoot(runtimeDir, "sessions", `${sessionId}.cancel`);
+}
+
+export async function requestSessionCancel(
+  projectRoot: string,
+  sessionId: string,
+  options: { reason?: string; source?: string } = {},
+): Promise<SessionCancelRecord> {
+  assertValidSessionId(sessionId);
+  const runtimePaths = await ensureRuntimePaths(projectRoot);
+  const markerPath = cancelMarkerPath(runtimePaths.runtimeDir, sessionId);
+  const record: SessionCancelRecord = {
+    sessionId,
+    requestedAt: toIsoTimestamp(),
+    ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.source ? { source: options.source } : {}),
+  };
+  await writeFile(markerPath, JSON.stringify(record), {
+    mode: runtimeFileMode,
+  });
+  return record;
+}
+
+export async function readSessionCancel(
+  projectRoot: string,
+  sessionId: string,
+): Promise<SessionCancelRecord | undefined> {
+  assertValidSessionId(sessionId);
+  const runtimePaths = await ensureRuntimePaths(projectRoot);
+  const markerPath = cancelMarkerPath(runtimePaths.runtimeDir, sessionId);
+  if (!(await fileExists(markerPath))) return undefined;
+  try {
+    const raw = await readFile(markerPath, "utf8");
+    return JSON.parse(raw) as SessionCancelRecord;
+  } catch (error) {
+    throw new HttpiError(
+      "SESSION_CANCEL_MARKER_INVALID",
+      `Cancel marker for session ${sessionId} is malformed.`,
+      { exitCode: exitCodes.validationFailure, cause: error },
+    );
+  }
+}
+
+export async function isSessionCancelled(
+  projectRoot: string,
+  sessionId: string,
+): Promise<boolean> {
+  return (await readSessionCancel(projectRoot, sessionId)) !== undefined;
+}
+
+/**
+ * In-process registry of currently-executing sessions. Used by the CLI to
+ * install a SIGINT/SIGTERM handler that translates signals into a cancel
+ * marker for each active run (A2: "cancel: onSignal").
+ */
+type ActiveSessionRecord = { projectRoot: string; sessionId: string };
+const activeSessions = new Map<string, ActiveSessionRecord>();
+
+function activeKey(projectRoot: string, sessionId: string): string {
+  return `${projectRoot}::${sessionId}`;
+}
+
+export function registerActiveSession(
+  projectRoot: string,
+  sessionId: string,
+): void {
+  activeSessions.set(activeKey(projectRoot, sessionId), {
+    projectRoot,
+    sessionId,
+  });
+}
+
+export function unregisterActiveSession(
+  projectRoot: string,
+  sessionId: string,
+): void {
+  activeSessions.delete(activeKey(projectRoot, sessionId));
+}
+
+export function listActiveSessions(): ActiveSessionRecord[] {
+  return Array.from(activeSessions.values());
+}
+
+let signalHandlerInstalled = false;
+const signalGraceWindowMs = 1500;
+
+export function installSignalCancelHandler(
+  signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"],
+): void {
+  if (signalHandlerInstalled) return;
+  signalHandlerInstalled = true;
+  let handling = false;
+  for (const signal of signals) {
+    process.on(signal, () => {
+      if (handling) {
+        // Second signal = hard exit (common "Ctrl-C twice" pattern).
+        process.exit(130);
+        return;
+      }
+      handling = true;
+      const pending = listActiveSessions();
+      if (pending.length === 0) {
+        process.exit(130);
+        return;
+      }
+      // Write markers and WAIT for them to hit disk before starting the
+      // grace window. Previously the 250 ms clock started before writes
+      // completed, creating a race on slow filesystems.
+      void Promise.allSettled(
+        pending.map(({ projectRoot, sessionId }) =>
+          requestSessionCancel(projectRoot, sessionId, {
+            reason: `received ${signal}`,
+            source: "signal",
+          }),
+        ),
+      )
+        .then(
+          () =>
+            // Allow the executor up to signalGraceWindowMs to observe the
+            // marker, abort in-flight fetches, flush chunks, and transition
+            // the session to `interrupted`. After that we exit; anything
+            // still running is surfaced as a diagnostic by the next run.
+            new Promise<void>((resolve) => {
+              const deadline = setTimeout(resolve, signalGraceWindowMs);
+              const checkDrain = (): void => {
+                if (listActiveSessions().length === 0) {
+                  clearTimeout(deadline);
+                  resolve();
+                  return;
+                }
+                setTimeout(checkDrain, 50);
+              };
+              setTimeout(checkDrain, 50);
+            }),
+        )
+        .finally(() => process.exit(130));
+    });
+  }
+}
+
+/** Test-only: reset the module-level install latch. */
+export function __resetSignalHandlerLatchForTests(): void {
+  signalHandlerInstalled = false;
+}
+
+export async function clearSessionCancel(
+  projectRoot: string,
+  sessionId: string,
+): Promise<void> {
+  assertValidSessionId(sessionId);
+  const runtimePaths = await ensureRuntimePaths(projectRoot);
+  const markerPath = cancelMarkerPath(runtimePaths.runtimeDir, sessionId);
+  await removeFileIfExists(markerPath);
+}

@@ -106,6 +106,9 @@ export function compileRunSnapshot(
     definitionHashes,
     steps: compiledSteps,
     envGuards: envFile.definition.guards,
+    ...(typeof runFile.definition.timeoutMs === "number"
+      ? { runTimeoutMs: runFile.definition.timeoutMs }
+      : {}),
     createdAt: toIsoTimestamp(),
   };
   compiledSnapshot.processEnvHashes = collectProcessEnvHashes(
@@ -200,9 +203,31 @@ function compileRunSteps(
       return {
         kind: "parallel",
         id: step.id,
+        ...(step.concurrency ? { concurrency: step.concurrency } : {}),
         steps: step.steps.map((childStep) =>
           compileRunRequestStep(project, childStep, definitionHashes),
         ),
+      };
+    }
+
+    if (step.kind === "switch") {
+      return {
+        kind: "switch",
+        id: step.id,
+        on: step.on,
+        cases: step.cases.map((c) => ({
+          when: c.when,
+          steps: c.steps.map((child) =>
+            compileRunRequestStep(project, child, definitionHashes),
+          ),
+        })),
+        ...(step.default
+          ? {
+              defaultSteps: step.default.steps.map((child) =>
+                compileRunRequestStep(project, child, definitionHashes),
+              ),
+            }
+          : {}),
       };
     }
 
@@ -254,6 +279,7 @@ function compileRunRequestStep(
     request: compileRequestDefinition(project, requestFile, definitionHashes),
     retry: step.retry,
     idempotency: step.idempotency,
+    ...(step.iterate ? { iterate: step.iterate } : {}),
   };
 }
 

@@ -45,6 +45,15 @@ export interface StepArtifactWriteInput {
   streamChunks?: StreamChunkRecord[] | undefined;
   streamAssembledText?: string | undefined;
   streamAssembledJson?: unknown | undefined;
+  binary?:
+    | {
+        absolutePath: string;
+        relativePath: string;
+        bytes: number;
+        sha256: string;
+        truncated: boolean;
+      }
+    | undefined;
 }
 
 export async function appendSessionEvent(
@@ -269,6 +278,26 @@ export async function writeStepArtifacts(
       }
     }
 
+    // Binary response (A3): record a manifest entry with sha256/size/path but
+    // do not inline the body. Path is stored verbatim; it may live outside
+    // .httpi/responses when the user explicitly opts into a different saveTo.
+    if (input.binary) {
+      manifest.entries.push({
+        schemaVersion,
+        sessionId: session.sessionId,
+        stepId: input.stepId,
+        attempt: input.attempt,
+        kind: "response.binary" as ArtifactManifestEntry["kind"],
+        relativePath: input.binary.relativePath,
+        contentType: "application/octet-stream",
+        sha256: input.binary.sha256,
+        sizeBytes: input.binary.bytes,
+      } as ArtifactManifestEntry);
+      summary.binaryPath = input.binary.relativePath;
+      summary.binarySha256 = input.binary.sha256;
+      summary.binaryBytes = input.binary.bytes;
+    }
+
     manifest.entries = sortArtifactManifestEntries(manifest.entries);
     await assertProjectOwnedFileIfExists(
       projectRoot,
@@ -370,6 +399,103 @@ export function redactArtifactText(
   secretValues: Iterable<string>,
 ): string {
   return redactText(value, secretValues);
+}
+
+export interface StreamChunkRange {
+  start?: number | undefined;
+  end?: number | undefined;
+}
+
+export interface StreamChunksResult {
+  sessionId: string;
+  stepId: string;
+  attempt: number;
+  relativePath: string;
+  totalChunks: number;
+  chunks: StreamChunkRecord[];
+  range?: { start: number; end: number } | undefined;
+}
+
+export async function readStreamChunks(
+  projectRoot: string,
+  sessionId: string,
+  stepId: string,
+  range?: StreamChunkRange,
+): Promise<StreamChunksResult> {
+  assertValidSessionId(sessionId);
+  const runtimePaths = await ensureRuntimePaths(projectRoot);
+  await readSession(projectRoot, sessionId);
+  const manifest = await readArtifactManifest(projectRoot, sessionId);
+
+  const matching = manifest.entries.filter(
+    (entry) =>
+      entry.stepId === stepId && (entry.kind as string) === "stream.chunks",
+  );
+  if (matching.length === 0) {
+    throw new HttpiError(
+      "STREAM_CHUNKS_NOT_FOUND",
+      `No stream chunk artifacts were captured for step ${stepId} in session ${sessionId}.`,
+      { exitCode: exitCodes.validationFailure },
+    );
+  }
+  // Pick the highest attempt
+  const entry = matching.reduce((acc, cur) =>
+    cur.attempt > acc.attempt ? cur : acc,
+  );
+
+  const sessionArtifactRoot = resolveFromRoot(
+    runtimePaths.responsesDir,
+    sessionId,
+  );
+  const absolutePath = resolveFromRoot(sessionArtifactRoot, entry.relativePath);
+  assertPathWithin(sessionArtifactRoot, absolutePath, {
+    code: "ARTIFACT_PATH_INVALID",
+    message: `Artifact path ${entry.relativePath} must stay within session ${sessionId}.`,
+    exitCode: exitCodes.validationFailure,
+  });
+  const artifactStats = await lstat(absolutePath);
+  if (artifactStats.isSymbolicLink()) {
+    throw new HttpiError(
+      "ARTIFACT_PATH_INVALID",
+      `Artifact path ${entry.relativePath} must not resolve through a symlink.`,
+      { exitCode: exitCodes.validationFailure },
+    );
+  }
+  const resolvedArtifactRoot = await realpath(sessionArtifactRoot);
+  const resolvedArtifactPath = await realpath(absolutePath);
+  assertPathWithin(resolvedArtifactRoot, resolvedArtifactPath, {
+    code: "ARTIFACT_PATH_INVALID",
+    message: `Artifact path ${entry.relativePath} must stay within session ${sessionId}.`,
+    exitCode: exitCodes.validationFailure,
+  });
+  const raw = (await readFile(resolvedArtifactPath, "utf8")).trimEnd();
+  const lines = raw.length === 0 ? [] : raw.split("\n");
+  const parsed: StreamChunkRecord[] = [];
+  for (const line of lines) {
+    if (line.trim().length === 0) continue;
+    try {
+      parsed.push(JSON.parse(line) as StreamChunkRecord);
+    } catch {
+      // skip malformed line rather than fail
+    }
+  }
+
+  const total = parsed.length;
+  const start = Math.max(0, range?.start ?? 0);
+  const endRaw = range?.end ?? total;
+  const end = Math.min(total, Math.max(start, endRaw));
+  const sliced =
+    start === 0 && end === total ? parsed : parsed.slice(start, end);
+
+  return {
+    sessionId,
+    stepId,
+    attempt: entry.attempt,
+    relativePath: entry.relativePath,
+    totalChunks: total,
+    chunks: sliced,
+    ...(range ? { range: { start, end } } : {}),
+  };
 }
 
 async function ensureSessionArtifactRoot(

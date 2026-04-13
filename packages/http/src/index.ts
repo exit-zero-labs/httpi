@@ -1,9 +1,14 @@
 import type {
   CapturePolicy,
+  HttpExecutionHooks,
   HttpExecutionResult,
+  JsonValue,
   ResolvedRequestModel,
   StreamChunkRecord,
 } from "@exit-zero-labs/httpi-contracts";
+
+type StreamAssembledLast = JsonValue;
+
 import {
   coerceErrorMessage,
   exitCodes,
@@ -13,6 +18,7 @@ import {
 export async function executeHttpRequest(
   request: ResolvedRequestModel,
   capture: CapturePolicy,
+  hooks: HttpExecutionHooks = {},
 ): Promise<HttpExecutionResult> {
   const startedAt = performance.now();
 
@@ -23,12 +29,23 @@ export async function executeHttpRequest(
     requestBody = request.body.text;
   }
 
+  // Combine timeout + external cancel into a single signal so mid-flight
+  // fetches honor `httpi cancel` and SIGINT even before the read loop starts.
+  const abortController = new AbortController();
+  const timeoutSignal = AbortSignal.timeout(request.timeoutMs);
+  const onTimeout = (): void => abortController.abort(timeoutSignal.reason);
+  if (timeoutSignal.aborted) {
+    abortController.abort(timeoutSignal.reason);
+  } else {
+    timeoutSignal.addEventListener("abort", onTimeout, { once: true });
+  }
+
   let response: Response;
   try {
     const requestInit: RequestInit = {
       method: request.method,
       headers: request.headers,
-      signal: AbortSignal.timeout(request.timeoutMs),
+      signal: abortController.signal,
     };
     if (requestBody !== undefined) {
       requestInit.body = requestBody;
@@ -64,7 +81,26 @@ export async function executeHttpRequest(
 
   // Stream mode: parse chunks from the response body
   if (request.responseMode === "stream" && request.streamConfig) {
-    return executeStreamingResponse(request, response, startedAt, capture);
+    return executeStreamingResponse(
+      request,
+      response,
+      startedAt,
+      capture,
+      hooks,
+      abortController,
+    );
+  }
+
+  // Binary mode (A3): stream to disk without buffering the whole body.
+  if (request.responseMode === "binary") {
+    return executeBinaryResponse(
+      request,
+      response,
+      startedAt,
+      capture,
+      hooks,
+      abortController,
+    );
   }
 
   const responseBuffer = Buffer.from(await response.arrayBuffer());
@@ -103,8 +139,12 @@ async function executeStreamingResponse(
   response: Response,
   startedAt: number,
   capture: CapturePolicy,
+  hooks: HttpExecutionHooks,
+  abortController: AbortController,
 ): Promise<HttpExecutionResult> {
   const streamConfig = request.streamConfig!;
+  const streamHooks = hooks.stream ?? {};
+  const shouldCancel = hooks.shouldCancel;
   const chunks: StreamChunkRecord[] = [];
   const assembledParts: string[] = [];
   let totalBytes = 0;
@@ -135,13 +175,54 @@ async function executeStreamingResponse(
     streamConfig.capture === "final" ||
     streamConfig.capture === "both";
 
+  let cancelled = false;
+  // Race the read against a periodic cancel poll so a server that holds the
+  // connection open but stops emitting chunks still honors `httpi cancel` and
+  // SIGINT within ~100 ms (A2 SRE fix). Without this the cancel marker would
+  // only be observed after the next chunk arrives, which may be never.
+  const readWithCancelPoll = async (): Promise<
+    | { kind: "read"; done: boolean; value: Uint8Array | undefined }
+    | { kind: "cancel" }
+  > => {
+    const readPromise = reader
+      .read()
+      .then((r) => ({ kind: "read", done: r.done, value: r.value }) as const);
+    if (!shouldCancel) return readPromise;
+    let pollHandle: NodeJS.Timeout | undefined;
+    const cancelPromise = new Promise<{ kind: "cancel" }>((resolve) => {
+      const tick = async (): Promise<void> => {
+        try {
+          if (await shouldCancel()) {
+            resolve({ kind: "cancel" });
+            return;
+          }
+        } catch {
+          // non-fatal
+        }
+        pollHandle = setTimeout(tick, 100);
+      };
+      pollHandle = setTimeout(tick, 100);
+    });
+    try {
+      return await Promise.race([readPromise, cancelPromise]);
+    } finally {
+      if (pollHandle) clearTimeout(pollHandle);
+    }
+  };
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const outcome = await readWithCancelPoll();
+      if (outcome.kind === "cancel") {
+        cancelled = true;
+        abortController.abort();
+        break;
+      }
+      const { done, value } = outcome;
       if (done) {
         streamDone = true;
         break;
       }
+      if (!value) continue;
 
       const now = performance.now();
 
@@ -161,6 +242,11 @@ async function executeStreamingResponse(
 
       if (firstChunkMs === undefined) {
         firstChunkMs = Math.round(now - startedAt);
+        try {
+          streamHooks.onFirstByte?.({ tOffsetMs: firstChunkMs });
+        } catch {
+          // hook errors are non-fatal
+        }
       } else {
         const interChunk = Math.round(now - lastChunkTime);
         if (interChunk > maxInterChunkMs) {
@@ -179,16 +265,22 @@ async function executeStreamingResponse(
         const preview =
           event.length > 200 ? `${event.slice(0, 200)}...` : event;
 
+        const record: StreamChunkRecord = {
+          seq,
+          tOffsetMs,
+          bytes: eventBytes,
+          preview,
+        };
         if (shouldCaptureChunks) {
-          chunks.push({
-            seq,
-            tOffsetMs,
-            bytes: eventBytes,
-            preview,
-          });
+          chunks.push(record);
         }
         if (shouldCaptureAssembled) {
           assembledParts.push(event);
+        }
+        try {
+          streamHooks.onChunk?.(record);
+        } catch {
+          // hook errors are non-fatal
         }
         seq++;
         eventCount++;
@@ -227,6 +319,7 @@ async function executeStreamingResponse(
     ? assembledParts.join("\n")
     : undefined;
   let assembledJson;
+  let assembledLast: unknown | undefined;
   if (shouldCaptureAssembled && assembledParts.length > 0) {
     try {
       if (streamConfig.parse === "ndjson") {
@@ -256,10 +349,52 @@ async function executeStreamingResponse(
     } catch {
       // assembled stays as text if JSON parsing fails
     }
+    // Derive the terminal frame for AI `finalAssembled` schema assertions.
+    if (Array.isArray(assembledJson) && assembledJson.length > 0) {
+      assembledLast = assembledJson[assembledJson.length - 1];
+    } else if (assembledJson !== undefined) {
+      assembledLast = assembledJson;
+    }
   }
 
   const contentType = response.headers.get("content-type") ?? undefined;
   const durationMs = Math.round(performance.now() - startedAt);
+
+  if (cancelled) {
+    try {
+      streamHooks.onFailed?.({
+        errorClass: "cancelled",
+        message: "stream cancelled via external signal",
+      });
+    } catch {
+      // hook errors are non-fatal
+    }
+    throw new HttpiError(
+      "HTTP_STREAM_CANCELLED",
+      "Stream was cancelled before completion.",
+      {
+        exitCode: exitCodes.executionFailure,
+        details: [
+          {
+            level: "error" as const,
+            code: "HTTP_STREAM_CANCELLED",
+            message: `Stream cancelled after ${eventCount} chunk(s).`,
+            hint: "Cancellation was requested by the user (CLI, MCP, or SIGINT). Partial chunks were preserved.",
+          },
+        ],
+      },
+    );
+  }
+
+  try {
+    streamHooks.onCompleted?.({
+      totalChunks: eventCount,
+      totalBytes,
+      durationMs,
+    });
+  } catch {
+    // hook errors are non-fatal
+  }
 
   return {
     request: {
@@ -283,10 +418,166 @@ async function executeStreamingResponse(
       chunks,
       assembledText,
       assembledJson,
+      ...(assembledLast !== undefined
+        ? { assembledLast: assembledLast as StreamAssembledLast }
+        : {}),
       firstChunkMs,
       maxInterChunkMs,
       totalChunks: eventCount,
       totalBytes,
+    },
+    durationMs,
+  };
+}
+
+async function executeBinaryResponse(
+  request: ResolvedRequestModel,
+  response: Response,
+  startedAt: number,
+  capture: CapturePolicy,
+  hooks: HttpExecutionHooks,
+  abortController: AbortController,
+): Promise<HttpExecutionResult> {
+  const { createHash } = await import("node:crypto");
+  const { createWriteStream } = await import("node:fs");
+  const { mkdir } = await import("node:fs/promises");
+  const {
+    dirname,
+    isAbsolute,
+    resolve: resolvePath,
+  } = await import("node:path");
+
+  if (!request.saveTo) {
+    throw new HttpiError(
+      "BINARY_SAVE_TO_REQUIRED",
+      "response.mode: binary requires response.saveTo to be set.",
+      { exitCode: exitCodes.validationFailure },
+    );
+  }
+
+  // Resolve relative paths against the process cwd (which is the project
+  // root when invoked via CLI/MCP).
+  const absolutePath = isAbsolute(request.saveTo)
+    ? request.saveTo
+    : resolvePath(process.cwd(), request.saveTo);
+
+  await mkdir(dirname(absolutePath), { recursive: true });
+
+  const maxBytes = request.responseMaxBytes ?? capture.maxBodyBytes;
+  const hash = createHash("sha256");
+  let total = 0;
+  let truncated = false;
+  const writer = createWriteStream(absolutePath, { flags: "w" });
+
+  const body = response.body;
+  if (!body) {
+    writer.end();
+    throw new HttpiError(
+      "BINARY_NO_BODY",
+      "Response has no body to download.",
+      { exitCode: exitCodes.executionFailure },
+    );
+  }
+
+  const reader = body.getReader();
+  const shouldCancel = hooks.shouldCancel;
+  let cancelled = false;
+  try {
+    while (true) {
+      if (shouldCancel) {
+        try {
+          if (await shouldCancel()) {
+            cancelled = true;
+            abortController.abort();
+            break;
+          }
+        } catch {
+          // non-fatal
+        }
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      let slice = value;
+      if (total + slice.byteLength > maxBytes) {
+        const remaining = Math.max(0, maxBytes - total);
+        slice = value.subarray(0, remaining);
+        truncated = true;
+      }
+      if (slice.byteLength > 0) {
+        hash.update(slice);
+        await new Promise<void>((resolve, reject) => {
+          writer.write(slice, (err) => (err ? reject(err) : resolve()));
+        });
+        total += slice.byteLength;
+      }
+      if (truncated) {
+        abortController.abort();
+        break;
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel().catch(() => undefined);
+    } catch {
+      // already closed
+    }
+    reader.releaseLock();
+    await new Promise<void>((resolve) => writer.end(resolve));
+  }
+
+  if (cancelled) {
+    throw new HttpiError(
+      "HTTP_STREAM_CANCELLED",
+      "Binary download was cancelled before completion.",
+      { exitCode: exitCodes.executionFailure },
+    );
+  }
+
+  if (truncated) {
+    throw new HttpiError(
+      "BINARY_MAXBYTES_EXCEEDED",
+      `Binary response exceeded response.maxBytes=${maxBytes}.`,
+      {
+        exitCode: exitCodes.executionFailure,
+        details: [
+          {
+            level: "error" as const,
+            code: "BINARY_MAXBYTES_EXCEEDED",
+            message: `Binary response was truncated at ${total} bytes.`,
+            hint: "Increase response.maxBytes if the payload is legitimately larger, or investigate the upstream size.",
+          },
+        ],
+      },
+    );
+  }
+
+  const contentType = response.headers.get("content-type") ?? undefined;
+  const durationMs = Math.round(performance.now() - startedAt);
+  const sha256Hex = hash.digest("hex");
+
+  return {
+    request: {
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      bodyBytes:
+        request.body?.binary?.byteLength ??
+        (request.body?.text ? Buffer.byteLength(request.body.text) : 0),
+    },
+    response: {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+      bodyBytes: total,
+      contentType,
+      truncated: false,
+    },
+    binary: {
+      absolutePath,
+      relativePath: request.saveTo,
+      bytes: total,
+      sha256: sha256Hex,
+      truncated: false,
     },
     durationMs,
   };
