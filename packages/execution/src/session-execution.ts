@@ -1,3 +1,10 @@
+/**
+ * Top-level session orchestration.
+ *
+ * This module is responsible for the run loop that advances a compiled session
+ * through pause, retry, parallel, polling, and completion semantics while
+ * keeping on-disk state and emitted events in sync.
+ */
 import type {
   CompiledParallelStep,
   CompiledPollUntilStep,
@@ -32,6 +39,10 @@ import {
 } from "./session-attempts.js";
 import type { RequestExecutionOutcome } from "./types.js";
 
+/**
+ * Execute or resume a compiled session until it completes, pauses, fails, or
+ * is interrupted. The caller supplies the already-created session snapshot.
+ */
 export async function executeSession(
   projectRoot: string,
   initialSession: SessionRecord,

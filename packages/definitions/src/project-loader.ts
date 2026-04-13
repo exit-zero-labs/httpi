@@ -1,3 +1,9 @@
+/**
+ * Loads tracked project files from `httpi/` into typed in-memory definitions.
+ *
+ * This module owns path-derived identity, typed YAML parsing, secret-literal
+ * detection, and enrichment of file-backed diagnostics before execution begins.
+ */
 import { lstat, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
@@ -48,6 +54,10 @@ import { parseRequestDefinition } from "./request-parser.js";
 import { parseRunDefinition } from "./run-parser.js";
 import { validateProjectReferences } from "./validation.js";
 
+/**
+ * Load config, environments, blocks, requests, and runs from the tracked
+ * project tree, then attach enriched cross-file diagnostics.
+ */
 export async function loadProjectFiles(
   projectRoot: string,
 ): Promise<ProjectFiles> {
@@ -135,6 +145,7 @@ export async function loadProjectFiles(
   return projectFiles;
 }
 
+/** Generic tracked-directory loader that derives IDs from file paths. */
 async function loadDefinitionDirectory<TDefinition>(
   projectRoot: string,
   directoryPath: string,
@@ -201,6 +212,7 @@ async function loadDefinitionDirectory<TDefinition>(
   };
 }
 
+/** Parse one tracked YAML file, preserving both hash and precise diagnostics. */
 async function parseTypedYamlFile<TValue>(
   projectRoot: string,
   filePath: string,

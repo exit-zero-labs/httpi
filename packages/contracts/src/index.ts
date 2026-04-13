@@ -1,17 +1,30 @@
+/**
+ * Shared public contracts for the entire repository.
+ *
+ * Anything that crosses package, CLI, MCP, or on-disk boundaries should be
+ * declared here so every surface agrees on shape, terminology, and semantics.
+ */
 import { sep } from "node:path";
 
+/** Version tag written into tracked and runtime-owned documents. */
 export const schemaVersion = 1 as const;
+/** Canonical replacement used when secret-bearing values are redacted. */
 export const redactedValue = "[REDACTED]" as const;
 
+/** Primitive JSON value accepted in request bodies, assertions, and artifacts. */
 export type JsonPrimitive = string | number | boolean | null;
+/** Recursive JSON value used across schemas, outputs, and persisted artifacts. */
 export type JsonValue =
   | JsonPrimitive
   | { [key: string]: JsonValue }
   | JsonValue[];
 
+/** Flat scalar used for env values, defaults, overrides, and extracted outputs. */
 export type FlatVariableValue = JsonPrimitive;
+/** Flat map because precedence and provenance are tracked per scalar key. */
 export type FlatVariableMap = Record<string, FlatVariableValue>;
 
+/** HTTP methods supported by request definitions and resolved requests. */
 export type HttpMethod =
   | "GET"
   | "POST"
@@ -21,6 +34,7 @@ export type HttpMethod =
   | "HEAD"
   | "OPTIONS";
 
+/** Structured diagnostic surfaced consistently across CLI, MCP, and APIs. */
 export interface Diagnostic {
   level: "error" | "warning";
   code: string;
@@ -35,6 +49,7 @@ export interface Diagnostic {
   path?: string | undefined;
 }
 
+/** Runtime guard for unknown diagnostic-like values. */
 export function isDiagnostic(value: unknown): value is Diagnostic {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -54,6 +69,7 @@ export function isDiagnostic(value: unknown): value is Diagnostic {
   );
 }
 
+/** Diagnostic with file, line, column, and hint fully populated. */
 export interface EnrichedDiagnostic
   extends Omit<Diagnostic, "hint" | "file" | "filePath" | "line" | "column"> {
   hint: string;
@@ -63,6 +79,7 @@ export interface EnrichedDiagnostic
   column: number;
 }
 
+/** Runtime guard for diagnostics that have already been enriched. */
 export function isEnrichedDiagnostic(
   value: unknown,
 ): value is EnrichedDiagnostic {
@@ -82,6 +99,7 @@ export function isEnrichedDiagnostic(
   );
 }
 
+/** Append a diagnostic path segment using dotted or indexed notation. */
 export function appendDiagnosticPath(
   basePath: string,
   segment: string | number,
@@ -107,6 +125,7 @@ export function appendDiagnosticPath(
   return `${basePath}[${JSON.stringify(segment)}]`;
 }
 
+/** Convert an absolute file path into the stable display path shown to users. */
 export function toDisplayDiagnosticFile(filePath: string): string {
   if (
     filePath === "<unknown>" ||
@@ -134,6 +153,7 @@ export function toDisplayDiagnosticFile(filePath: string): string {
   return "<unknown>";
 }
 
+/** Capture policy compiled from project config and applied to every step attempt. */
 export interface CapturePolicy {
   requestSummary: boolean;
   responseMetadata: boolean;
@@ -144,13 +164,16 @@ export interface CapturePolicy {
 
 // --- Redaction rules (J2) ---
 
+/** Supported built-in redaction strategies for runtime inspection surfaces. */
 export type RedactPatternKind = "email" | "us-ssn" | "credit-card" | "regex";
 
+/** Pattern entry used by the project redaction policy. */
 export interface RedactPattern {
   kind: RedactPatternKind;
   pattern?: string | undefined;
 }
 
+/** Project-wide redaction policy applied to output and artifact reads. */
 export interface RedactionConfig {
   redactHeaders?: string[] | undefined;
   redactJsonPaths?: string[] | undefined;
@@ -159,11 +182,13 @@ export interface RedactionConfig {
 
 // --- Mutation gating (E3) ---
 
+/** Policy for how mutating steps must be confirmed before execution. */
 export type MutationGatingMode =
   | "pause-before"
   | "allow"
   | "require-explicit-step";
 
+/** Optional run-level confirmation rules for mutating behavior. */
 export interface MutationConfirmation {
   mutating?: MutationGatingMode | undefined;
   overrides?: Array<{ step: string; allow: boolean }> | undefined;
@@ -171,8 +196,10 @@ export interface MutationConfirmation {
 
 // --- CI Reporter (F1) ---
 
+/** Reporter output formats exposed by the CLI surface. */
 export type ReporterFormat = "junit" | "tap" | "github" | "json";
 
+/** Top-level tracked project config loaded from `httpi/config.yaml`. */
 export interface ProjectConfig {
   schemaVersion: typeof schemaVersion;
   project: string;
@@ -182,6 +209,7 @@ export interface ProjectConfig {
   redaction?: RedactionConfig | undefined;
 }
 
+/** Environment-level safety gates evaluated before sensitive execution modes. */
 export interface EnvironmentGuards {
   requireEnv?: string | undefined;
   requireFlag?: string | undefined;
@@ -190,6 +218,7 @@ export interface EnvironmentGuards {
   denyHosts?: string[] | undefined;
 }
 
+/** Tracked non-secret environment values loaded from `httpi/env/*.env.yaml`. */
 export interface EnvironmentDefinition {
   schemaVersion: typeof schemaVersion;
   title?: string | undefined;
@@ -197,29 +226,34 @@ export interface EnvironmentDefinition {
   values: FlatVariableMap;
 }
 
+/** Reusable header block referenced by requests through `uses.headers`. */
 export interface HeaderBlockDefinition {
   schemaVersion?: typeof schemaVersion | undefined;
   title?: string | undefined;
   headers: Record<string, string>;
 }
 
+/** Inline bearer token auth applied directly by a request or auth block. */
 export interface BearerAuthDefinition {
   scheme: "bearer";
   token: string;
 }
 
+/** Inline HTTP Basic auth credentials. */
 export interface BasicAuthDefinition {
   scheme: "basic";
   username: string;
   password: string;
 }
 
+/** Generic header-based auth for custom schemes. */
 export interface HeaderAuthDefinition {
   scheme: "header";
   header: string;
   value: string;
 }
 
+/** Client-credentials OAuth2 flow resolved at execution time. */
 export interface OAuth2ClientCredentialsDefinition {
   scheme: "oauth2-client-credentials";
   tokenUrl: string;
@@ -229,6 +263,7 @@ export interface OAuth2ClientCredentialsDefinition {
   cacheKey?: string | undefined;
 }
 
+/** Request signing scheme for HMAC-protected APIs. */
 export interface HmacAuthDefinition {
   scheme: "hmac";
   algorithm: "sha256" | "sha512";
@@ -238,6 +273,7 @@ export interface HmacAuthDefinition {
   headers?: Record<string, string> | undefined;
 }
 
+/** All auth shapes supported by the tracked request DSL. */
 export type AuthDefinition =
   | BearerAuthDefinition
   | BasicAuthDefinition
@@ -245,22 +281,26 @@ export type AuthDefinition =
   | OAuth2ClientCredentialsDefinition
   | HmacAuthDefinition;
 
+/** Reusable auth block referenced by requests through `uses.auth`. */
 export interface AuthBlockDefinition {
   schemaVersion?: typeof schemaVersion | undefined;
   title?: string | undefined;
   auth: AuthDefinition;
 }
 
+/** File-backed request body loaded relative to the tracked project. */
 export interface BodyFileDefinition {
   file: string;
   contentType?: string | undefined;
 }
 
+/** Inline JSON request body. */
 export interface BodyJsonDefinition {
   json: JsonValue;
   contentType?: string | undefined;
 }
 
+/** Inline text request body. */
 export interface BodyTextDefinition {
   text: string;
   contentType?: string | undefined;
@@ -268,12 +308,14 @@ export interface BodyTextDefinition {
 
 // --- Binary/multipart body types (A3) ---
 
+/** Binary request body read from disk and sent without text coercion. */
 export interface BodyBinaryDefinition {
   kind: "binary";
   file: string;
   contentType?: string | undefined;
 }
 
+/** One multipart field, with exactly one payload source in practice. */
 export interface MultipartPart {
   name: string;
   file?: string | undefined;
@@ -282,11 +324,13 @@ export interface MultipartPart {
   contentType?: string | undefined;
 }
 
+/** Multipart request body composed from text, JSON, and file parts. */
 export interface BodyMultipartDefinition {
   kind: "multipart";
   parts: MultipartPart[];
 }
 
+/** Supported request-body authoring forms. */
 export type RequestBodyDefinition =
   | BodyFileDefinition
   | BodyJsonDefinition
@@ -296,18 +340,23 @@ export type RequestBodyDefinition =
 
 // --- Streaming types (A1) ---
 
+/** Response handling mode selected for a request. */
 export type ResponseMode = "buffered" | "stream" | "binary";
 
+/** Streaming parser used when `response.mode` is `stream`. */
 export type StreamParseMode = "sse" | "ndjson" | "chunked-json";
 
+/** Which parts of a stream should be persisted for later inspection. */
 export type StreamCaptureMode = "chunks" | "final" | "both";
 
+/** Stream parsing and capture settings compiled onto a request. */
 export interface StreamConfig {
   parse: StreamParseMode;
   capture?: StreamCaptureMode | undefined;
   maxBytes?: number | undefined;
 }
 
+/** Assertions evaluated against streaming timing and assembled output. */
 export interface StreamAssertions {
   firstChunkWithinMs?: number | undefined;
   maxInterChunkMs?: number | undefined;
@@ -315,12 +364,14 @@ export interface StreamAssertions {
   finalAssembled?: SchemaAssertionDefinition | undefined;
 }
 
+/** Schema assertion that validates a JSON payload against an external schema file. */
 export interface SchemaAssertionDefinition {
   kind: "json-schema";
   schema: string;
   draft?: string | undefined;
 }
 
+/** Response handling directives attached to a request definition. */
 export interface ResponseConfig {
   mode?: ResponseMode | undefined;
   stream?: StreamConfig | undefined;
@@ -331,6 +382,7 @@ export interface ResponseConfig {
 
 // --- Assertion types (B1) ---
 
+/** Numeric matcher used for latency and other scalar thresholds. */
 export interface LatencyMatcher {
   lt?: number | undefined;
   lte?: number | undefined;
@@ -338,6 +390,7 @@ export interface LatencyMatcher {
   gte?: number | undefined;
 }
 
+/** Header matcher supporting exact, partial, and regex-based checks. */
 export interface HeaderMatcher {
   startsWith?: string | undefined;
   endsWith?: string | undefined;
@@ -347,6 +400,7 @@ export interface HeaderMatcher {
   exists?: boolean | undefined;
 }
 
+/** Small JSONPath assertion DSL used for response-body checks. */
 export interface JsonPathAssertion {
   path: string;
   equals?: JsonValue | undefined;
@@ -362,6 +416,7 @@ export interface JsonPathAssertion {
   lt?: number | undefined;
 }
 
+/** Body expectations for text, JSON, schema, and snapshot assertions. */
 export interface BodyExpectation {
   contentType?: string | undefined;
   jsonPath?: JsonPathAssertion[] | undefined;
@@ -380,6 +435,7 @@ export interface BodyExpectation {
   mask?: Array<{ path: string }> | undefined;
 }
 
+/** Machine-readable result for one individual assertion evaluation. */
 export interface AssertionResult {
   path: string;
   matcher: string;
@@ -388,22 +444,26 @@ export interface AssertionResult {
   passed: boolean;
 }
 
+/** Iterate a request step multiple times with optional concurrency. */
 export interface IterateConfig {
   count: number;
   concurrency?: number | undefined;
 }
 
+/** Percentile thresholds used for aggregate latency expectations. */
 export interface PercentileMatcher {
   p50?: LatencyMatcher | undefined;
   p95?: LatencyMatcher | undefined;
   p99?: LatencyMatcher | undefined;
 }
 
+/** Aggregate expectations evaluated across an iterated request step. */
 export interface AggregateExpectation {
   latencyMs?: PercentileMatcher | undefined;
   errorRate?: LatencyMatcher | undefined;
 }
 
+/** All built-in expectations that can be attached to a request. */
 export interface RequestExpectation {
   status?: number | number[] | undefined;
   latencyMs?: LatencyMatcher | undefined;
@@ -413,22 +473,26 @@ export interface RequestExpectation {
   aggregate?: AggregateExpectation | undefined;
 }
 
+/** Extraction rule that promotes part of a response into step outputs. */
 export interface ExtractionDefinition {
   from: string;
   required?: boolean | undefined;
   secret?: boolean | undefined;
 }
 
+/** References to reusable tracked blocks consumed by a request. */
 export interface RequestUses {
   headers?: string[] | undefined;
   auth?: string | undefined;
 }
 
+/** Cancellation behavior requested for a step or run invocation. */
 export interface CancelConfig {
   onRunTimeout?: boolean | undefined;
   onSignal?: string[] | undefined;
 }
 
+/** Atomic request definition loaded from `httpi/requests/<path>.request.yaml`. */
 export interface RequestDefinition {
   kind: "request";
   title?: string | undefined;
@@ -448,9 +512,12 @@ export interface RequestDefinition {
 
 // --- Retry types (C1) ---
 
+/** Backoff curve used by step retry behavior. */
 export type BackoffStrategy = "exponential" | "linear" | "constant";
+/** Jitter strategy applied to calculated retry delays. */
 export type JitterStrategy = "full" | "equal" | "none";
 
+/** Retry policy applied to a request step inside a run. */
 export interface RetryPolicy {
   maxAttempts: number;
   initialDelayMs?: number | undefined;
@@ -465,6 +532,7 @@ export interface RetryPolicy {
     | undefined;
 }
 
+/** Idempotency header emitted on retried request steps when configured. */
 export interface IdempotencyConfig {
   header: string;
   value: string;
@@ -472,6 +540,7 @@ export interface IdempotencyConfig {
 
 // --- PollUntil types (C4) ---
 
+/** Poll condition evaluated against the latest response body. */
 export interface PollUntilCondition {
   jsonPath: string;
   equals?: JsonValue | undefined;
@@ -482,6 +551,7 @@ export interface PollUntilCondition {
   exists?: boolean | undefined;
 }
 
+/** Standard request step inside a run graph. */
 export interface RunRequestStepDefinition {
   kind: "request";
   id: string;
@@ -492,6 +562,7 @@ export interface RunRequestStepDefinition {
   iterate?: IterateConfig | undefined;
 }
 
+/** Polling step that repeatedly issues a request until a condition is met. */
 export interface RunPollUntilStepDefinition {
   kind: "pollUntil";
   id: string;
@@ -505,6 +576,7 @@ export interface RunPollUntilStepDefinition {
   timeoutMs?: number | undefined;
 }
 
+/** Parallel fan-out step whose children are all request steps. */
 export interface RunParallelStepDefinition {
   kind: "parallel";
   id: string;
@@ -512,6 +584,7 @@ export interface RunParallelStepDefinition {
   steps: RunRequestStepDefinition[];
 }
 
+/** Explicit pause point that persists the session before the next step starts. */
 export interface RunPauseStepDefinition {
   kind: "pause";
   id: string;
@@ -534,6 +607,7 @@ export interface SwitchCase {
   steps: RunRequestStepDefinition[];
 }
 
+/** Declarative branch step driven by a previously produced runtime value. */
 export interface RunSwitchStepDefinition {
   kind: "switch";
   id: string;
@@ -542,6 +616,7 @@ export interface RunSwitchStepDefinition {
   default?: { steps: RunRequestStepDefinition[] } | undefined;
 }
 
+/** All top-level step kinds currently supported by the run DSL. */
 export type RunStepDefinition =
   | RunRequestStepDefinition
   | RunParallelStepDefinition
@@ -549,6 +624,7 @@ export type RunStepDefinition =
   | RunPollUntilStepDefinition
   | RunSwitchStepDefinition;
 
+/** Multi-step workflow definition loaded from `httpi/runs/<path>.run.yaml`. */
 export interface RunDefinition {
   kind: "run";
   title?: string | undefined;
@@ -562,8 +638,10 @@ export interface RunDefinition {
 
 // --- Dataset fan-out types (G1) ---
 
+/** Supported tracked dataset formats for future fan-out style workflows. */
 export type DatasetSourceFormat = "jsonl" | "csv" | "yaml";
 
+/** Dataset-driven fan-out step shape reserved by the contracts package. */
 export interface RunDatasetStepDefinition {
   kind: "dataset";
   id: string;
@@ -572,6 +650,7 @@ export interface RunDatasetStepDefinition {
   steps: RunRequestStepDefinition[];
 }
 
+/** Kinds of tracked definitions discovered in the project tree. */
 export type DefinitionKind =
   | "config"
   | "env"
@@ -580,6 +659,7 @@ export type DefinitionKind =
   | "request"
   | "run";
 
+/** Typed tracked file with path-derived identity and content hash. */
 export interface LoadedDefinition<TDefinition> {
   kind: DefinitionKind;
   id: string;
@@ -595,6 +675,7 @@ export type AuthBlockFile = LoadedDefinition<AuthBlockDefinition>;
 export type RequestFile = LoadedDefinition<RequestDefinition>;
 export type RunFile = LoadedDefinition<RunDefinition>;
 
+/** Fully loaded tracked project state ready for validation or compilation. */
 export interface ProjectFiles {
   rootDir: string;
   configPath: string;
@@ -608,6 +689,7 @@ export interface ProjectFiles {
   diagnostics: EnrichedDiagnostic[];
 }
 
+/** Header block after compilation has resolved path identity and hash. */
 export interface CompiledHeaderBlock {
   id: string;
   filePath: string;
@@ -615,6 +697,7 @@ export interface CompiledHeaderBlock {
   headers: Record<string, string>;
 }
 
+/** Auth block after compilation has resolved path identity and hash. */
 export interface CompiledAuthBlock {
   id: string;
   filePath: string;
@@ -622,6 +705,7 @@ export interface CompiledAuthBlock {
   auth: AuthDefinition;
 }
 
+/** Fully merged request definition used by the execution layer. */
 export interface CompiledRequestDefinition {
   requestId: string;
   title?: string | undefined;
@@ -642,6 +726,7 @@ export interface CompiledRequestDefinition {
   cancel?: CancelConfig | undefined;
 }
 
+/** Request step after its referenced request has been compiled and inlined. */
 export interface CompiledRequestStep {
   kind: "request";
   id: string;
@@ -653,6 +738,7 @@ export interface CompiledRequestStep {
   iterate?: IterateConfig | undefined;
 }
 
+/** Parallel step after each child request step has been compiled. */
 export interface CompiledParallelStep {
   kind: "parallel";
   id: string;
@@ -660,12 +746,14 @@ export interface CompiledParallelStep {
   steps: CompiledRequestStep[];
 }
 
+/** Pause step after compilation; no further transformation is required. */
 export interface CompiledPauseStep {
   kind: "pause";
   id: string;
   reason: string;
 }
 
+/** Polling step after its request and timing rules have been normalized. */
 export interface CompiledPollUntilStep {
   kind: "pollUntil";
   id: string;
@@ -681,6 +769,7 @@ export interface CompiledSwitchCase {
   steps: CompiledRequestStep[];
 }
 
+/** Switch step after each branch has been compiled to request steps. */
 export interface CompiledSwitchStep {
   kind: "switch";
   id: string;
@@ -689,6 +778,7 @@ export interface CompiledSwitchStep {
   defaultSteps?: CompiledRequestStep[] | undefined;
 }
 
+/** Normalized executable step kinds produced by snapshot compilation. */
 export type CompiledRunStep =
   | CompiledRequestStep
   | CompiledParallelStep
@@ -696,6 +786,13 @@ export type CompiledRunStep =
   | CompiledPollUntilStep
   | CompiledSwitchStep;
 
+/**
+ * Immutable execution snapshot created at run start.
+ *
+ * Resume safety depends on this object: tracked definitions, env values, and
+ * non-secret inputs are frozen here, while runtime-only secrets are resolved
+ * later when a step is materialized.
+ */
 export interface CompiledRunSnapshot {
   schemaVersion: typeof schemaVersion;
   source: "run" | "request";
@@ -720,6 +817,7 @@ export interface CompiledRunSnapshot {
   createdAt: string;
 }
 
+/** Top-level session states persisted under `.httpi/sessions/`. */
 export type SessionState =
   | "created"
   | "running"
@@ -728,6 +826,7 @@ export type SessionState =
   | "completed"
   | "interrupted";
 
+/** Per-step states persisted inside the session record. */
 export type StepState =
   | "pending"
   | "running"
@@ -736,6 +835,7 @@ export type StepState =
   | "paused"
   | "interrupted";
 
+/** Captured summary for one parsed streaming event or chunk. */
 export interface StreamChunkRecord {
   seq: number;
   tOffsetMs: number;
@@ -743,6 +843,7 @@ export interface StreamChunkRecord {
   preview: string;
 }
 
+/** Relative artifact paths recorded for one completed attempt. */
 export interface StepArtifactSummary {
   requestSummaryPath?: string | undefined;
   responseMetadataPath?: string | undefined;
@@ -754,6 +855,7 @@ export interface StepArtifactSummary {
   binaryBytes?: number | undefined;
 }
 
+/** Immutable record of one attempt at executing a step. */
 export interface StepAttemptRecord {
   attempt: number;
   startedAt: string;
@@ -765,6 +867,7 @@ export interface StepAttemptRecord {
   artifacts?: StepArtifactSummary | undefined;
 }
 
+/** Per-step execution ledger nested inside the persisted session. */
 export interface SessionStepRecord {
   stepId: string;
   kind: CompiledRunStep["kind"];
@@ -777,6 +880,12 @@ export interface SessionStepRecord {
   childStepIds?: string[] | undefined;
 }
 
+/**
+ * Persisted runtime session.
+ *
+ * This is the operator-facing source of truth for inspection, pause/resume,
+ * step attempts, extracted outputs, and artifact lookup.
+ */
 export interface SessionRecord {
   schemaVersion: typeof schemaVersion;
   sessionId: string;
@@ -797,6 +906,7 @@ export interface SessionRecord {
   resumedFromSessionId?: string | undefined;
 }
 
+/** Structured lifecycle event appended to `events.jsonl` during execution. */
 export interface SessionEvent {
   schemaVersion: typeof schemaVersion;
   eventType: string;
@@ -812,6 +922,7 @@ export interface SessionEvent {
   message?: string | undefined;
 }
 
+/** One manifest row describing a captured artifact for later inspection. */
 export interface ArtifactManifestEntry {
   schemaVersion: typeof schemaVersion;
   sessionId: string;
@@ -831,18 +942,21 @@ export interface ArtifactManifestEntry {
   sizeBytes?: number | undefined;
 }
 
+/** Manifest written alongside session artifacts under `.httpi/responses/`. */
 export interface ArtifactManifest {
   schemaVersion: typeof schemaVersion;
   sessionId: string;
   entries: ArtifactManifestEntry[];
 }
 
+/** Concrete request body after files/templates have been resolved. */
 export interface ResolvedRequestBody {
   contentType?: string | undefined;
   text?: string | undefined;
   binary?: Uint8Array | undefined;
 }
 
+/** Fully materialized HTTP request ready for transport execution. */
 export interface ResolvedRequestModel {
   requestId: string;
   stepId: string;
@@ -861,6 +975,7 @@ export interface ResolvedRequestModel {
   responseMaxBytes?: number | undefined;
 }
 
+/** Streaming callbacks used by the execution layer for live event emission. */
 export interface StreamEventHooks {
   onFirstByte?: (info: { tOffsetMs: number }) => void;
   onChunk?: (chunk: StreamChunkRecord) => void;
@@ -872,11 +987,13 @@ export interface StreamEventHooks {
   onFailed?: (info: { errorClass: string; message: string }) => void;
 }
 
+/** HTTP execution hooks for cancellation and stream observation. */
 export interface HttpExecutionHooks {
   shouldCancel?: () => boolean | Promise<boolean>;
   stream?: StreamEventHooks;
 }
 
+/** Result shape returned by the HTTP transport package. */
 export interface HttpExecutionResult {
   request: {
     method: HttpMethod;
@@ -922,6 +1039,7 @@ export interface HttpExecutionResult {
   durationMs: number;
 }
 
+/** Provenance record for one effective variable value. */
 export interface VariableExplanation {
   name: string;
   value?: FlatVariableValue | undefined;
@@ -937,12 +1055,14 @@ export interface VariableExplanation {
   secret?: boolean | undefined;
 }
 
+/** Small listing entry returned by discovery surfaces. */
 export interface DefinitionSummary {
   id: string;
   title?: string | undefined;
   filePath: string;
 }
 
+/** Runtime session summary returned by discovery surfaces. */
 export interface SessionSummary {
   sessionId: string;
   runId: string;
@@ -952,6 +1072,7 @@ export interface SessionSummary {
   updatedAt: string;
 }
 
+/** Output returned by project discovery commands and tools. */
 export interface ListDefinitionsResult {
   rootDir: string;
   requests: DefinitionSummary[];
@@ -961,6 +1082,7 @@ export interface ListDefinitionsResult {
   diagnostics: EnrichedDiagnostic[];
 }
 
+/** Explain-one-request result used by CLI and MCP describe surfaces. */
 export interface DescribeRequestResult {
   requestId: string;
   envId: string;
@@ -969,6 +1091,7 @@ export interface DescribeRequestResult {
   diagnostics: EnrichedDiagnostic[];
 }
 
+/** Simplified step tree returned by run description commands and tools. */
 export interface DescribeRunStep {
   id: string;
   kind: CompiledRunStep["kind"];
@@ -977,6 +1100,7 @@ export interface DescribeRunStep {
   children?: DescribeRunStep[] | undefined;
 }
 
+/** Describe-one-run result returned by CLI and MCP surfaces. */
 export interface DescribeRunResult {
   runId: string;
   envId: string;
@@ -985,21 +1109,25 @@ export interface DescribeRunResult {
   diagnostics: EnrichedDiagnostic[];
 }
 
+/** Standard result returned by run, resume, and execute flows. */
 export interface ExecutionResult {
   session: SessionRecord;
   diagnostics: EnrichedDiagnostic[];
 }
 
+/** Session inspection result returned by CLI and MCP state queries. */
 export interface SessionStateResult {
   session: SessionRecord;
   diagnostics: EnrichedDiagnostic[];
 }
 
+/** Artifact listing result for a session or one step. */
 export interface ArtifactListResult {
   sessionId: string;
   artifacts: ArtifactManifestEntry[];
 }
 
+/** Artifact read result with either text or base64 content. */
 export interface ArtifactReadResult {
   sessionId: string;
   relativePath: string;
@@ -1008,6 +1136,7 @@ export interface ArtifactReadResult {
   base64?: string | undefined;
 }
 
+/** Variable provenance result for a request or one run step. */
 export interface ExplainVariablesResult {
   targetId: string;
   envId: string;

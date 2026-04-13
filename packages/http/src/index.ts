@@ -1,3 +1,10 @@
+/**
+ * HTTP transport execution for resolved requests.
+ *
+ * The execution package hands this module a fully materialized request plus
+ * capture policy. This module owns fetch invocation, buffered/streaming/binary
+ * response handling, and normalization into `HttpExecutionResult`.
+ */
 import type {
   CapturePolicy,
   HttpExecutionHooks,
@@ -15,6 +22,12 @@ import {
   HttpiError,
 } from "@exit-zero-labs/httpi-shared";
 
+/**
+ * Execute one resolved HTTP request and normalize the response for the engine.
+ *
+ * `request.responseMode` selects buffered, streaming, or binary handling, while
+ * `hooks` provide cooperative cancellation and stream lifecycle callbacks.
+ */
 export async function executeHttpRequest(
   request: ResolvedRequestModel,
   capture: CapturePolicy,
@@ -134,6 +147,7 @@ export async function executeHttpRequest(
   };
 }
 
+/** Streaming response path for SSE, NDJSON, and chunked JSON request modes. */
 async function executeStreamingResponse(
   request: ResolvedRequestModel,
   response: Response,
@@ -430,6 +444,7 @@ async function executeStreamingResponse(
   };
 }
 
+/** Binary response path that streams directly to disk while hashing and truncating. */
 async function executeBinaryResponse(
   request: ResolvedRequestModel,
   response: Response,

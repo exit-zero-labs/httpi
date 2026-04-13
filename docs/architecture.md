@@ -70,8 +70,31 @@ The architecture is built around four constraints:
                  │                                 │
                  ▼                                 ▼
         tracked project files              untracked runtime state
-              `httpi/`                          `.httpi/`
+               `httpi/`                          `.httpi/`
 ```
+
+### 4.1 End-to-end lifecycle
+
+An `httpi` execution flows through the packages in a fixed order:
+
+1. **interface adapter** (`apps/cli`) parses CLI or MCP input, normalizes options, and selects one shared engine call
+2. **definition loading** (`packages/definitions`) discovers the project, loads tracked YAML, validates references, and compiles an immutable snapshot
+3. **orchestration** (`packages/execution`) resolves variables and secrets, manages retries and pauses, and advances the session state machine
+4. **transport** (`packages/http`) performs the actual HTTP exchange, including buffered, streaming, and binary modes
+5. **persistence** (`packages/runtime`) writes sessions, artifacts, events, locks, and cancel markers under `.httpi/`
+6. **presentation** (`apps/cli` or MCP) returns redacted results with stable exit codes or tool payloads
+
+The key design constraint is that compilation, execution, and persistence each have a single owner. Interface layers stay thin so CLI and MCP behavior cannot drift.
+
+### 4.2 Hot-path ownership
+
+| Lifecycle stage | Owning package | Why it lives there |
+| ---------------- | -------------- | ------------------ |
+| Project discovery and typed YAML loading | `packages/definitions` | Path-derived identity, schema validation, and cross-file reference checks need one source of truth |
+| Snapshot compilation and request materialization | `packages/execution` | Execution owns precedence rules, step graphs, retries, and provenance |
+| HTTP transport and response parsing | `packages/http` | Transport concerns stay isolated from orchestration and storage |
+| Sessions, locks, artifacts, and cancel markers | `packages/runtime` | All `.httpi/` on-disk formats and ownership checks stay in one place |
+| CLI and MCP rendering | `apps/cli` | Human/operator formatting and MCP schemas should not leak into engine packages |
 
 ## 5. Monorepo layout
 
@@ -479,6 +502,16 @@ Rules:
 - incompatible session or artifact schema versions block resume
 - file drift blocks normal resume unless the interface deliberately supports stored-snapshot execution
 - interrupted sessions are not resumable in v0 because delivery may be ambiguous and the operator should start a new run
+
+Resume follows a deliberate gate sequence:
+
+1. read the persisted session from `.httpi/sessions/`
+2. require a resumable state (`paused` or `failed`)
+3. compare stored definition hashes against the current tracked files
+4. reacquire the session lock so only one caller can continue execution
+5. continue from `nextStepId` or re-attempt the failed step using the stored compiled snapshot
+
+That sequence is intentionally stricter than a typical retry loop because `httpi` optimizes for inspectability and delivery safety over convenience.
 
 ### 9.6 Persistence and locking
 

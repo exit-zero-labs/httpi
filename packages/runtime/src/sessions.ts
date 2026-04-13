@@ -1,3 +1,9 @@
+/**
+ * Session persistence for `.httpi/sessions/*.json`.
+ *
+ * Sessions are the durable execution ledger for pause/resume, inspection, and
+ * safety checks. This file owns their creation, validation, and atomic writes.
+ */
 import { readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type {
@@ -25,6 +31,12 @@ import {
   runtimeFileMode,
 } from "./runtime-paths.js";
 
+/**
+ * Create the initial persisted session record from a compiled snapshot.
+ *
+ * The session eagerly allocates step records for the entire compiled graph so
+ * later execution can update state without re-deriving structure.
+ */
 export function createSessionRecord(
   compiled: SessionRecord["compiled"],
   sessionId = createSessionId(compiled.source),
@@ -94,6 +106,7 @@ export function createSessionRecord(
   };
 }
 
+/** Persist a complete session record atomically under `.httpi/sessions/`. */
 export async function writeSession(
   projectRoot: string,
   session: SessionRecord,
@@ -108,6 +121,7 @@ export async function writeSession(
   await writeJsonFileAtomic(sessionPaths.sessionPath, session, runtimeFileMode);
 }
 
+/** Read and validate one persisted session record. */
 export async function readSession(
   projectRoot: string,
   sessionId: string,
@@ -133,6 +147,7 @@ export async function readSession(
   return session;
 }
 
+/** List persisted sessions in newest-first update order. */
 export async function listSessions(
   projectRoot: string,
 ): Promise<SessionRecord[]> {
@@ -161,6 +176,7 @@ export async function listSessions(
   );
 }
 
+/** Update the session timestamp and optionally transition the top-level state. */
 export function touchSession(
   session: SessionRecord,
   state?: SessionRecord["state"],
@@ -172,6 +188,7 @@ export function touchSession(
   };
 }
 
+/** Update one step record without mutating the rest of the session graph. */
 export function updateStepState(
   session: SessionRecord,
   stepId: string,

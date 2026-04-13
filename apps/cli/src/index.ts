@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+/**
+ * Thin CLI adapter for the shared `httpi` engine.
+ *
+ * This file should stay focused on argv parsing, command dispatch, terminal
+ * formatting, and exit-code mapping. Domain behavior belongs in packages.
+ */
 import type {
   Diagnostic,
   FlatVariableMap,
@@ -29,6 +35,7 @@ import {
 import packageJson from "../package.json" with { type: "json" };
 import { formatCliDiagnostics, toCliFailure } from "./error.js";
 
+/** Dispatch one CLI invocation and return the process exit code to use. */
 export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   if (
     argv.length === 0 ||
@@ -386,6 +393,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   );
 }
 
+/** Print the human-facing CLI usage summary. */
 function printUsage(): void {
   const usage = `httpi
 
@@ -433,6 +441,7 @@ Examples:
 // F1: CI reporter. Minimal JSON reporter supported in this slice.
 // Format: --reporter json:./path.json  (shorthand `json` writes to .httpi/reports/run.json)
 // Additional formats (junit, tap, github) ship in follow-up work.
+/** Write an optional reporter artifact for CI or automation consumers. */
 async function maybeWriteReporter(
   spec: string | undefined,
   result: unknown,
@@ -457,6 +466,7 @@ async function maybeWriteReporter(
   process.stderr.write(`[httpi] wrote JSON reporter to ${target}\n`);
 }
 
+/** Minimal flag parser for the published CLI surface. */
 function parseArgs(argv: string[]): {
   positionals: string[];
   flags: Record<string, string[]>;
@@ -502,6 +512,7 @@ function parseArgs(argv: string[]): {
   };
 }
 
+/** Parse repeated `--input key=value` flags into typed flat overrides. */
 function parseInputs(inputAssignments: string[]): FlatVariableMap {
   return inputAssignments.reduce<FlatVariableMap>((result, assignment) => {
     const separatorIndex = assignment.indexOf("=");

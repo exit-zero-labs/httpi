@@ -1,3 +1,7 @@
+/**
+ * Public entrypoint for runtime persistence, artifact inspection, and
+ * pause/resume safety helpers backed by `.httpi/`.
+ */
 export type {
   StepArtifactWriteInput,
   StreamChunkRange,

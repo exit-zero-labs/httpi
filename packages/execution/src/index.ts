@@ -1,3 +1,9 @@
+/**
+ * Public execution-package API consumed by the CLI and MCP adapters.
+ *
+ * This module keeps interface layers thin by centralizing project discovery,
+ * snapshot compilation, execution, inspection, and resume/cancel semantics.
+ */
 import type {
   ArtifactListResult,
   ArtifactReadResult,
@@ -43,6 +49,7 @@ import {
   acceptSnapshot as writeSnapshotFile,
 } from "./snapshot.js";
 
+/** Result returned after accepting a snapshot-backed body expectation. */
 export interface AcceptSnapshotResult {
   sessionId: string;
   stepId: string;
@@ -50,6 +57,13 @@ export interface AcceptSnapshotResult {
   wrote: boolean;
 }
 
+/**
+ * Persist the latest captured response body as the declared snapshot for one step.
+ *
+ * This is intentionally driven from an existing session so operators review the
+ * exact body that was captured during execution before promoting it to a tracked
+ * assertion asset.
+ */
 export async function acceptSnapshotForStep(
   sessionId: string,
   stepId: string,
@@ -132,6 +146,7 @@ import type { EngineOptions } from "./types.js";
 export { initProject } from "./project-init.js";
 export type { EngineOptions, InitProjectResult } from "./types.js";
 
+/** Discover tracked definitions plus persisted runtime sessions for a project. */
 export async function listProjectDefinitions(
   options: EngineOptions = {},
 ): Promise<ListDefinitionsResult> {
@@ -169,6 +184,7 @@ export async function listProjectDefinitions(
   };
 }
 
+/** Validate tracked project files without compiling or executing a target. */
 export async function validateProject(options: EngineOptions = {}): Promise<{
   rootDir: string;
   diagnostics: EnrichedDiagnostic[];
@@ -180,6 +196,7 @@ export async function validateProject(options: EngineOptions = {}): Promise<{
   };
 }
 
+/** Compile and materialize one request for inspection without sending HTTP. */
 export async function describeRequest(
   requestId: string,
   options: EngineOptions & {
@@ -212,6 +229,7 @@ export async function describeRequest(
   });
 }
 
+/** Compile one run and return a simplified view of its executable step graph. */
 export async function describeRun(
   runId: string,
   options: EngineOptions & {
@@ -237,6 +255,7 @@ export async function describeRun(
   });
 }
 
+/** Start a fresh session for a single request definition. */
 export async function runRequest(
   requestId: string,
   options: EngineOptions & {
@@ -261,6 +280,7 @@ export async function runRequest(
   });
 }
 
+/** Start a fresh session for a full run definition. */
 export async function runRun(
   runId: string,
   options: EngineOptions & {
@@ -285,6 +305,10 @@ export async function runRun(
   });
 }
 
+/**
+ * Resume a paused or failed session after verifying that tracked definitions
+ * still match the snapshot hashes captured at run start.
+ */
 export async function resumeSessionRun(
   sessionId: string,
   options: EngineOptions = {},
@@ -321,6 +345,7 @@ export async function resumeSessionRun(
   };
 }
 
+/** Read the persisted session plus any drift diagnostics that affect resume. */
 export async function getSessionState(
   sessionId: string,
   options: EngineOptions = {},
@@ -336,6 +361,7 @@ export async function getSessionState(
   };
 }
 
+/** List captured artifacts for a session, optionally narrowed to one step. */
 export async function listSessionArtifacts(
   sessionId: string,
   options: EngineOptions & { stepId?: string | undefined } = {},
@@ -348,6 +374,7 @@ export async function listSessionArtifacts(
   };
 }
 
+/** Read one captured artifact through the runtime package's safety checks. */
 export async function readSessionArtifact(
   sessionId: string,
   relativePath: string,
@@ -364,12 +391,17 @@ export async function readSessionArtifact(
   };
 }
 
+/** Result returned after writing a cancel marker for a session. */
 export interface CancelSessionResult {
   sessionId: string;
   state: string;
   cancel: SessionCancelRecord;
 }
 
+/**
+ * Request cancellation for a session and eagerly mark runnable sessions as
+ * interrupted so callers see a terminal state even before an executor polls.
+ */
 export async function cancelSessionRun(
   sessionId: string,
   options: EngineOptions & { reason?: string; source?: string } = {},
@@ -394,6 +426,7 @@ export async function cancelSessionRun(
   return { sessionId, state: session.state, cancel };
 }
 
+/** Read captured stream chunks for the latest streamed attempt of a step. */
 export async function getSessionStreamChunks(
   sessionId: string,
   stepId: string,
@@ -403,6 +436,10 @@ export async function getSessionStreamChunks(
   return readStreamChunks(rootDir, sessionId, stepId, options.range);
 }
 
+/**
+ * Explain effective variable values and provenance for a request or run step
+ * without executing HTTP.
+ */
 export async function explainVariables(
   options: EngineOptions & {
     requestId?: string | undefined;
@@ -477,6 +514,7 @@ export async function explainVariables(
   });
 }
 
+/** Enrich file-backed diagnostics before surfacing HttpiError details publicly. */
 async function withEnrichedDiagnosticErrors<TResult>(
   action: () => Promise<TResult>,
 ): Promise<TResult> {
@@ -487,6 +525,7 @@ async function withEnrichedDiagnosticErrors<TResult>(
   }
 }
 
+/** Best-effort enrichment for diagnostic arrays already attached to an HttpiError. */
 async function enrichHttpiErrorDiagnostics(error: unknown): Promise<unknown> {
   if (!(error instanceof HttpiError) || !Array.isArray(error.details)) {
     return error;

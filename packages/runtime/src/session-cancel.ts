@@ -32,6 +32,7 @@ function cancelMarkerPath(runtimeDir: string, sessionId: string): string {
   return resolveFromRoot(runtimeDir, "sessions", `${sessionId}.cancel`);
 }
 
+/** Write the cross-process cancel marker that executors poll while running. */
 export async function requestSessionCancel(
   projectRoot: string,
   sessionId: string,
@@ -52,6 +53,7 @@ export async function requestSessionCancel(
   return record;
 }
 
+/** Read a session cancel marker if one has been requested. */
 export async function readSessionCancel(
   projectRoot: string,
   sessionId: string,
@@ -72,6 +74,7 @@ export async function readSessionCancel(
   }
 }
 
+/** Lightweight boolean helper used in hot execution paths. */
 export async function isSessionCancelled(
   projectRoot: string,
   sessionId: string,
@@ -91,6 +94,7 @@ function activeKey(projectRoot: string, sessionId: string): string {
   return `${projectRoot}::${sessionId}`;
 }
 
+/** Register a session so signal handlers can translate Ctrl-C into cancellation. */
 export function registerActiveSession(
   projectRoot: string,
   sessionId: string,
@@ -101,6 +105,7 @@ export function registerActiveSession(
   });
 }
 
+/** Remove a session from the in-process active-session registry. */
 export function unregisterActiveSession(
   projectRoot: string,
   sessionId: string,
@@ -108,6 +113,7 @@ export function unregisterActiveSession(
   activeSessions.delete(activeKey(projectRoot, sessionId));
 }
 
+/** Snapshot of sessions currently executing inside this process. */
 export function listActiveSessions(): ActiveSessionRecord[] {
   return Array.from(activeSessions.values());
 }
@@ -115,6 +121,10 @@ export function listActiveSessions(): ActiveSessionRecord[] {
 let signalHandlerInstalled = false;
 const signalGraceWindowMs = 1500;
 
+/**
+ * Install a single process-level signal handler that requests graceful session
+ * cancellation before exiting the CLI process.
+ */
 export function installSignalCancelHandler(
   signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"],
 ): void {
@@ -174,6 +184,7 @@ export function __resetSignalHandlerLatchForTests(): void {
   signalHandlerInstalled = false;
 }
 
+/** Remove a cancel marker after a fresh run or successful resume acquires control. */
 export async function clearSessionCancel(
   projectRoot: string,
   sessionId: string,

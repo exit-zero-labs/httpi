@@ -1,3 +1,9 @@
+/**
+ * MCP adapter for the shared `httpi` engine.
+ *
+ * Like the CLI entrypoint, this module should stay adapter-thin: validate tool
+ * inputs, call execution-package APIs, and normalize responses for MCP clients.
+ */
 import { isDiagnostic } from "@exit-zero-labs/httpi-contracts";
 import {
   cancelSessionRun,
@@ -25,6 +31,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import packageJson from "../package.json" with { type: "json" };
 
+// Zod schemas define the stable MCP input/output contracts at the boundary.
 const flatValueSchema = z.union([
   z.string(),
   z.number(),
@@ -186,6 +193,7 @@ const explainVariablesOutputSchema = {
   message: z.string().optional(),
 };
 
+/** Create the stdio MCP server and register the public `httpi` tool surface. */
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "httpi",
@@ -466,6 +474,7 @@ export function createMcpServer(): McpServer {
   return server;
 }
 
+/** Start the stdio MCP server used by `httpi mcp`. */
 export async function startMcpServer(): Promise<void> {
   const server = createMcpServer();
   const transport = new StdioServerTransport();
@@ -491,6 +500,7 @@ function toolResult(result: unknown): {
   };
 }
 
+/** Build a standard MCP error payload with both text and structured content. */
 function toolError(
   message: string,
   code = "MCP_TOOL_ERROR",
@@ -516,6 +526,7 @@ function toolError(
   };
 }
 
+/** Wrap a tool action so engine errors become structured MCP error responses. */
 async function handleTool(action: () => Promise<unknown>): Promise<{
   content: Array<{
     type: "text";

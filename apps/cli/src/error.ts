@@ -1,3 +1,9 @@
+/**
+ * CLI-facing error formatting helpers.
+ *
+ * The CLI keeps engine errors structured as long as possible, then translates
+ * them into stable exit codes and readable terminal output at the final edge.
+ */
 import { type Diagnostic, isDiagnostic } from "@exit-zero-labs/httpi-contracts";
 import {
   coerceErrorMessage,
@@ -5,11 +11,13 @@ import {
   isHttpiError,
 } from "@exit-zero-labs/httpi-shared";
 
+/** Terminal-friendly failure shape returned by the CLI error adapter. */
 export interface CliFailure {
   message: string;
   exitCode: number;
 }
 
+/** Convert any thrown value into a CLI message plus exit code. */
 export function toCliFailure(error: unknown): CliFailure {
   if (isHttpiError(error)) {
     return {
@@ -24,6 +32,7 @@ export function toCliFailure(error: unknown): CliFailure {
   };
 }
 
+/** Format a diagnostic list using file:line:column terminal output. */
 export function formatCliDiagnostics(diagnostics: Diagnostic[]): string {
   return diagnostics
     .map((diagnostic) => formatCliDiagnostic(diagnostic))

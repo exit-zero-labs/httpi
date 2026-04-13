@@ -1,3 +1,9 @@
+/**
+ * Shared project-loading helpers used by the execution package.
+ *
+ * These functions keep project discovery and common validation failures
+ * consistent across CLI commands and MCP tools.
+ */
 import type {
   CompiledRequestStep,
   CompiledRunSnapshot,
@@ -12,6 +18,7 @@ import {
 import { exitCodes, HttpiError } from "@exit-zero-labs/httpi-shared";
 import type { EngineOptions, LoadedProjectContext } from "./types.js";
 
+/** Normalized compile options passed into the definitions snapshot compiler. */
 export function buildCompileOptions(
   envId?: string,
   overrides?: FlatVariableMap,
@@ -27,6 +34,7 @@ export function buildCompileOptions(
   };
 }
 
+/** Request-only entrypoints compile to a single synthetic request step. */
 export function getSingleRequestStep(
   compiled: CompiledRunSnapshot,
   targetId: string,
@@ -42,6 +50,7 @@ export function getSingleRequestStep(
   return step;
 }
 
+/** Read one step record or surface an internal-invariant failure. */
 export function getSessionStepRecord(
   session: SessionRecord,
   stepId: string,
@@ -58,6 +67,7 @@ export function getSessionStepRecord(
   return stepRecord;
 }
 
+/** Discover the project root and load all tracked definitions once. */
 export async function loadProjectContext(
   options: EngineOptions,
 ): Promise<LoadedProjectContext> {

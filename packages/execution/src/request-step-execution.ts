@@ -1,3 +1,9 @@
+/**
+ * Execution of one compiled request step.
+ *
+ * The request-step executor is the narrow waist between request materialization,
+ * HTTP transport, assertion evaluation, extraction, and artifact persistence.
+ */
 import type {
   AssertionResult,
   CompiledRequestStep,
@@ -47,6 +53,12 @@ import type {
   RequestMaterializationResult,
 } from "./types.js";
 
+/**
+ * Execute one request step attempt and merge the result back into session state.
+ *
+ * When `persistState` is false, callers are responsible for the surrounding
+ * session write strategy (for example inside parallel orchestration).
+ */
 export async function executeRequestStep(
   projectRoot: string,
   session: SessionRecord,

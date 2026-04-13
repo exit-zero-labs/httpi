@@ -1,3 +1,10 @@
+/**
+ * Runtime path helpers for `.httpi/`.
+ *
+ * The runtime package treats every path as security-sensitive: directories must
+ * stay within the project root, must not traverse symlinks, and are created
+ * with restrictive permissions where the platform supports them.
+ */
 import { chmod, lstat, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -10,6 +17,7 @@ import {
 } from "@exit-zero-labs/httpi-shared";
 import { isMissingPathError } from "./runtime-errors.js";
 
+/** Canonical absolute locations for the runtime directory tree. */
 export interface RuntimePaths {
   rootDir: string;
   runtimeDir: string;
@@ -18,6 +26,7 @@ export interface RuntimePaths {
   secretsPath: string;
 }
 
+/** Derived paths for one session's state, lock, and artifact files. */
 export interface SessionRuntimePaths {
   sessionPath: string;
   lockFilePath: string;
@@ -26,11 +35,14 @@ export interface SessionRuntimePaths {
   eventLogPath: string;
 }
 
+/** Owner-only directory mode used for runtime directories when possible. */
 export const runtimeDirectoryMode = 0o700;
+/** Owner-only file mode used for runtime files when possible. */
 export const runtimeFileMode = 0o600;
 
 const sessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+/** Ensure the `.httpi/` runtime tree exists and stays inside the project root. */
 export async function ensureRuntimePaths(
   projectRoot: string,
 ): Promise<RuntimePaths> {
@@ -69,6 +81,7 @@ export async function ensureRuntimePaths(
   };
 }
 
+/** Create or validate a runtime-owned directory with path-ownership checks. */
 export async function ensureProjectOwnedDirectory(
   projectRoot: string,
   directoryPath: string,
@@ -101,6 +114,7 @@ export async function ensureProjectOwnedDirectory(
   });
 }
 
+/** Reject existing files that escape the project root or resolve through symlinks. */
 export async function assertProjectOwnedFileIfExists(
   projectRoot: string,
   filePath: string,
@@ -138,6 +152,7 @@ export async function assertProjectOwnedFileIfExists(
   });
 }
 
+/** Session IDs become file names, so they must stay within a conservative charset. */
 export function assertValidSessionId(sessionId: string): void {
   if (sessionIdPattern.test(sessionId)) {
     return;
@@ -150,6 +165,7 @@ export function assertValidSessionId(sessionId: string): void {
   );
 }
 
+/** Resolve all runtime-owned paths for one persisted session. */
 export function getSessionRuntimePaths(
   runtimePaths: RuntimePaths,
   sessionId: string,

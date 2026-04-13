@@ -1,3 +1,9 @@
+/**
+ * Runtime artifact persistence and inspection helpers.
+ *
+ * This module owns `.httpi/responses/<sessionId>/`, including event logs,
+ * manifests, step artifacts, and safe read-back of captured files.
+ */
 import { chmod, lstat, readFile, realpath } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import type {
@@ -34,6 +40,7 @@ import {
 } from "./runtime-paths.js";
 import { readSession } from "./sessions.js";
 
+/** All artifact payloads that may be written for one step attempt. */
 export interface StepArtifactWriteInput {
   stepId: string;
   attempt: number;
@@ -56,6 +63,7 @@ export interface StepArtifactWriteInput {
     | undefined;
 }
 
+/** Append one structured lifecycle event to a session's `events.jsonl` log. */
 export async function appendSessionEvent(
   projectRoot: string,
   session: SessionRecord,
@@ -74,6 +82,7 @@ export async function appendSessionEvent(
   });
 }
 
+/** Persist all artifacts captured for one step attempt and update the manifest. */
 export async function writeStepArtifacts(
   projectRoot: string,
   session: SessionRecord,
@@ -313,6 +322,7 @@ export async function writeStepArtifacts(
   });
 }
 
+/** List artifact manifest entries for a session, optionally filtered to one step. */
 export async function listArtifacts(
   projectRoot: string,
   sessionId: string,
@@ -328,6 +338,7 @@ export async function listArtifacts(
   return manifest.entries.filter((entry) => entry.stepId === stepId);
 }
 
+/** Read one captured artifact after validating ownership and manifest membership. */
 export async function readArtifact(
   projectRoot: string,
   sessionId: string,
@@ -394,6 +405,7 @@ export async function readArtifact(
   };
 }
 
+/** Apply standard secret redaction to text that may be surfaced publicly. */
 export function redactArtifactText(
   value: string,
   secretValues: Iterable<string>,
@@ -401,11 +413,13 @@ export function redactArtifactText(
   return redactText(value, secretValues);
 }
 
+/** Half-open range used to slice a captured stream chunk sequence. */
 export interface StreamChunkRange {
   start?: number | undefined;
   end?: number | undefined;
 }
 
+/** Read result for the latest captured stream chunk artifact of a step. */
 export interface StreamChunksResult {
   sessionId: string;
   stepId: string;
@@ -416,6 +430,7 @@ export interface StreamChunksResult {
   range?: { start: number; end: number } | undefined;
 }
 
+/** Read and optionally slice the latest `stream/chunks.jsonl` artifact for a step. */
 export async function readStreamChunks(
   projectRoot: string,
   sessionId: string,

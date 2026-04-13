@@ -1,3 +1,9 @@
+/**
+ * Public entrypoint for tracked-definition discovery, parsing, and compilation.
+ *
+ * Consumers should import from this file rather than individual modules when
+ * they need project loading, root discovery, or snapshot compilation.
+ */
 export {
   createYamlDiagnosticResolver,
   enrichDiagnosticsFromFiles,
