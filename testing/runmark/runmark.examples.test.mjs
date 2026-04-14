@@ -32,6 +32,17 @@ test("public examples validate cleanly", async () => {
   }
 });
 
+test("public examples default to the bundled demo server base URL", async () => {
+  for (const projectRoot of Object.values(exampleRoots)) {
+    const envDir = join(projectRoot, "runmark", "env");
+    const envFiles = await readdir(envDir);
+    for (const envFile of envFiles) {
+      const envYaml = await readFile(join(envDir, envFile), "utf8");
+      assert.match(envYaml, /baseUrl: http:\/\/127\.0\.0\.1:4318/);
+    }
+  }
+});
+
 test("getting-started example validates, describes, and runs", async () => {
   const { server, baseUrl } = await startMockServer();
   const projectRoot = await createExampleProject("getting-started", baseUrl);
@@ -413,27 +424,27 @@ async function createExampleProject(exampleId, baseUrl) {
     join(tmpdir(), `runmark-example-${exampleId}-`),
   );
   await cp(exampleRoot, projectRoot, { recursive: true });
-  await replacePlaceholderInTree(
-    join(projectRoot, "runmark", "env"),
-    "__BASE_URL__",
-    baseUrl,
-  );
+  await rewriteBaseUrlInTree(join(projectRoot, "runmark", "env"), baseUrl);
   return projectRoot;
 }
 
-async function replacePlaceholderInTree(root, placeholder, value) {
+async function rewriteBaseUrlInTree(root, baseUrl) {
   const entries = await readdir(root, { withFileTypes: true });
 
   for (const entry of entries) {
     const entryPath = join(root, entry.name);
 
     if (entry.isDirectory()) {
-      await replacePlaceholderInTree(entryPath, placeholder, value);
+      await rewriteBaseUrlInTree(entryPath, baseUrl);
       continue;
     }
 
     const content = await readFile(entryPath, "utf8");
-    await writeFile(entryPath, content.replaceAll(placeholder, value), "utf8");
+    await writeFile(
+      entryPath,
+      content.replace(/(^\s*baseUrl:\s*).+$/m, `$1${baseUrl}`),
+      "utf8",
+    );
   }
 }
 

@@ -17,6 +17,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { startDemoServer } from "../../packages/execution/dist/index.js";
 
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const cliEntrypoint = resolve(repoRoot, "apps/cli/dist/index.js");
@@ -91,6 +92,20 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
     );
 
     const sessionId = pausedExecution.session.sessionId;
+    const sessionPath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.json`,
+    );
+    const secretStatePath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.secret.json`,
+    );
     const manifestPath = join(
       projectRoot,
       "runmark",
@@ -133,6 +148,12 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
     const loginBody = await readFile(loginBodyPath, "utf8");
     assert.doesNotMatch(loginBody, /secret-token/);
     assert.match(loginBody, /\[REDACTED\]/);
+
+    const persistedSession = await readFile(sessionPath, "utf8");
+    const persistedSecretState = await readFile(secretStatePath, "utf8");
+    assert.doesNotMatch(persistedSession, /secret-token/);
+    assert.doesNotMatch(persistedSession, /swordfish/);
+    assert.match(persistedSecretState, /secret-token/);
 
     const sessionShow = await runNodeProcess(process.execPath, [
       cliEntrypoint,
@@ -196,6 +217,10 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
     );
     assert.equal(state.lastTouchNote, "visited by Ada");
 
+    const resumedPersistedSession = await readFile(sessionPath, "utf8");
+    assert.doesNotMatch(resumedPersistedSession, /secret-token/);
+    assert.doesNotMatch(resumedPersistedSession, /swordfish/);
+
     const secondResume = await runNodeProcess(process.execPath, [
       cliEntrypoint,
       "resume",
@@ -228,6 +253,154 @@ test("CLI validates, preserves parallel artifacts, blocks traversal, resumes, an
   }
 });
 
+test("CLI rejects out-of-sync secret session companion files", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+
+  try {
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--run",
+      "smoke",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 0, runResult.stderr);
+    const sessionId = JSON.parse(runResult.stdout).session.sessionId;
+
+    const secretStatePath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.secret.json`,
+    );
+    if (process.platform !== "win32") {
+      const secretStateStats = await stat(secretStatePath);
+      assert.equal(secretStateStats.mode & 0o777, 0o600);
+    }
+    const secretState = JSON.parse(await readFile(secretStatePath, "utf8"));
+    secretState.stepOutputs = {
+      ...(secretState.stepOutputs ?? {}),
+      orphanStep: {
+        leakedToken: "secret-token",
+      },
+    };
+    await writeFile(secretStatePath, `${JSON.stringify(secretState, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+
+    const sessionShow = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "session",
+      "show",
+      sessionId,
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(sessionShow.code, 2);
+    assert.match(sessionShow.stderr, /out of sync/);
+    assert.match(sessionShow.stderr, /orphanStep/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI rejects secret session companion files with mismatched schema versions", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+
+  try {
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--run",
+      "smoke",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 0, runResult.stderr);
+    const sessionId = JSON.parse(runResult.stdout).session.sessionId;
+
+    const secretStatePath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.secret.json`,
+    );
+    const secretState = JSON.parse(await readFile(secretStatePath, "utf8"));
+    secretState.schemaVersion = 999;
+    await writeFile(secretStatePath, `${JSON.stringify(secretState, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+
+    const sessionShow = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "session",
+      "show",
+      sessionId,
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(sessionShow.code, 2);
+    assert.match(sessionShow.stderr, /schema version 999/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI rejects secret session companion files with mismatched session ids", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+
+  try {
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--run",
+      "smoke",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 0, runResult.stderr);
+    const sessionId = JSON.parse(runResult.stdout).session.sessionId;
+
+    const secretStatePath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.secret.json`,
+    );
+    const secretState = JSON.parse(await readFile(secretStatePath, "utf8"));
+    secretState.sessionId = "other-session";
+    await writeFile(secretStatePath, `${JSON.stringify(secretState, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+
+    const sessionShow = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "session",
+      "show",
+      sessionId,
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(sessionShow.code, 2);
+    assert.match(sessionShow.stderr, /mismatched: found sessionId other-session/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test("CLI init scaffolds schema hints and preserves documented validation exits", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "runmark-init-"));
 
@@ -239,9 +412,18 @@ test("CLI init scaffolds schema hints and preserves documented validation exits"
       projectRoot,
     ]);
     assert.equal(initResult.code, 0, initResult.stderr);
+    const initializedProject = JSON.parse(initResult.stdout);
+    assert.deepEqual(initializedProject.nextSteps, [
+      "In another terminal: runmark demo start",
+      "Then run: runmark run --run smoke",
+    ]);
 
     const configYaml = await readFile(
       join(projectRoot, "runmark", "config.yaml"),
+      "utf8",
+    );
+    const envYaml = await readFile(
+      join(projectRoot, "runmark", "env", "dev.env.yaml"),
       "utf8",
     );
     const requestYaml = await readFile(
@@ -256,6 +438,12 @@ test("CLI init scaffolds schema hints and preserves documented validation exits"
       configYaml,
       /yaml-language-server: \$schema=.*config\.schema\.json/,
     );
+    assert.match(
+      configYaml,
+      /Prefer metadata-only response capture for first runs:/,
+    );
+    assert.match(configYaml, /responseBody: metadata/);
+    assert.match(envYaml, /baseUrl: http:\/\/127\.0\.0\.1:4318/);
     assert.match(
       requestYaml,
       /yaml-language-server: \$schema=.*request\.schema\.json/,
@@ -294,6 +482,619 @@ test("CLI exposes help and version discovery, including the `runmark mcp` subcom
   assert.match(cliHelp.stdout, /List targets:/);
   // MCP is now a subcommand of the CLI; help must advertise it.
   assert.match(cliHelp.stdout, /runmark mcp/);
+  assert.match(cliHelp.stdout, /runmark demo start/);
+  assert.match(cliHelp.stdout, /runmark clean/);
+  assert.match(cliHelp.stdout, /runmark audit export/);
+  assert.match(
+    cliHelp.stdout,
+    /Examples:\n {2}runmark demo start\n {2}runmark init\n {2}runmark run --run smoke\n {2}runmark mcp/,
+  );
+
+  const mcpHelp = await runNodeProcess(process.execPath, [cliEntrypoint, "mcp", "--help"]);
+  assert.equal(mcpHelp.code, 0, mcpHelp.stderr);
+  assert.match(mcpHelp.stdout, /projectRoot/);
+  assert.match(mcpHelp.stdout, /Breaking change in 0\.5\.0/);
+
+  const cleanHelp = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "clean",
+    "--help",
+  ]);
+  assert.equal(cleanHelp.code, 0, cleanHelp.stderr);
+  assert.match(cleanHelp.stdout, /runmark clean/);
+  assert.match(cleanHelp.stdout, /--older-than-days <n>/);
+
+  const auditHelp = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "audit",
+    "export",
+    "--help",
+  ]);
+  assert.equal(auditHelp.code, 0, auditHelp.stderr);
+  assert.match(auditHelp.stdout, /runmark audit export/);
+  assert.match(auditHelp.stdout, /redacted session-and-artifact summary/i);
+
+  const demoHelp = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "demo",
+    "start",
+    "--help",
+  ]);
+  assert.equal(demoHelp.code, 0, demoHelp.stderr);
+  assert.match(demoHelp.stdout, /runmark demo start/);
+  assert.match(demoHelp.stdout, /--host 127\.0\.0\.1/);
+  assert.match(demoHelp.stdout, /--port 4318/);
+});
+
+test("CLI demo start serves the bundled onboarding endpoint", async () => {
+  const demoServer = await startCliDemoServer();
+
+  try {
+    assert.match(demoServer.stdout(), /devPassword=swordfish/);
+
+    const response = await fetch(`${demoServer.baseUrl}/ping`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ok: true,
+      service: "runmark-demo",
+    });
+  } finally {
+    await demoServer.stop();
+  }
+});
+
+test("Demo server returns 400 for invalid JSON payloads", async () => {
+  const { server, baseUrl } = await startDemoServer({ port: 0 });
+
+  try {
+    for (const body of ["{", "[]", "null", "123", "true", '"string"']) {
+      const response = await fetch(`${baseUrl}/auth/login`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body,
+      });
+      assert.equal(response.status, 400, `Expected 400 for payload ${body}`);
+      assert.deepEqual(await response.json(), { error: "invalid-json" });
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("Demo server treats an empty login body as unauthorized input", async () => {
+  const { server, baseUrl } = await startDemoServer({ port: 0 });
+
+  try {
+    const response = await fetch(`${baseUrl}/auth/login`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: "",
+    });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "unauthorized" });
+  } finally {
+    server.close();
+  }
+});
+
+test("Demo server returns 404 for missing resources", async () => {
+  const { server, baseUrl } = await startDemoServer({ port: 0 });
+
+  try {
+    const basicResponse = await fetch(`${baseUrl}/basic/items/missing-item`, {
+      headers: {
+        authorization: `Basic ${Buffer.from("admin:swordfish").toString("base64")}`,
+      },
+    });
+    assert.equal(basicResponse.status, 404);
+    assert.deepEqual(await basicResponse.json(), { error: "not-found" });
+
+    const commerceResponse = await fetch(`${baseUrl}/commerce/orders/missing-order`, {
+      headers: {
+        "x-api-key": "commerce-token-secret",
+      },
+    });
+    assert.equal(commerceResponse.status, 404);
+    assert.deepEqual(await commerceResponse.json(), { error: "not-found" });
+  } finally {
+    server.close();
+  }
+});
+
+test("CLI audit export and clean work against the demo-backed init scaffold", async () => {
+  const { server, baseUrl } = await startDemoServer({ port: 0 });
+  const projectRoot = await mkdtemp(join(tmpdir(), "runmark-demo-init-"));
+
+  try {
+    const initResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "init",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(initResult.code, 0, initResult.stderr);
+
+    const emptyCleanResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--dry-run",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(emptyCleanResult.code, 0, emptyCleanResult.stderr);
+    const emptyCleanPayload = JSON.parse(emptyCleanResult.stdout);
+    assert.deepEqual(emptyCleanPayload.candidateSessionIds, []);
+    assert.deepEqual(emptyCleanPayload.removedSessionIds, []);
+    assert.deepEqual(emptyCleanPayload.keptSessionIds, []);
+    assert.deepEqual(emptyCleanPayload.skipped, []);
+
+    await writeFile(
+      join(projectRoot, "runmark", "env", "dev.env.yaml"),
+      `schemaVersion: 1\ntitle: Development\nvalues:\n  baseUrl: ${baseUrl}\n`,
+      "utf8",
+    );
+
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--run",
+      "smoke",
+      "--reporter",
+      "json",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 0, runResult.stderr);
+    const execution = JSON.parse(runResult.stdout);
+    const sessionId = execution.session.sessionId;
+
+    const reportPath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "reports",
+      "run.json",
+    );
+    const report = JSON.parse(await readFile(reportPath, "utf8"));
+    assert.equal(report.session.sessionId, sessionId);
+
+    const auditResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+      "export",
+      "--session",
+      sessionId,
+      "--output",
+      "audit-summary.json",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(auditResult.code, 0, auditResult.stderr);
+    const auditPayload = JSON.parse(auditResult.stdout);
+    assert.equal(auditPayload.sessions.length, 1);
+    assert.equal(auditPayload.sessions[0].sessionId, sessionId);
+
+    const auditFile = JSON.parse(
+      await readFile(join(projectRoot, "audit-summary.json"), "utf8"),
+    );
+    assert.equal(auditFile.sessions[0].sessionId, sessionId);
+
+    const escapedAuditPath = resolve(projectRoot, "..", "escaped-audit-summary.json");
+    const invalidAuditResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+      "export",
+      "--session",
+      sessionId,
+      "--output",
+      "../escaped-audit-summary.json",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(invalidAuditResult.code, 2);
+    assert.match(
+      invalidAuditResult.stderr,
+      /Output files must stay within the project root\./,
+    );
+    await assert.rejects(stat(escapedAuditPath), /ENOENT/);
+
+    const cleanDryRun = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--session",
+      sessionId,
+      "--dry-run",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(cleanDryRun.code, 0, cleanDryRun.stderr);
+    const dryRunPayload = JSON.parse(cleanDryRun.stdout);
+    assert.deepEqual(dryRunPayload.candidateSessionIds, [sessionId]);
+    assert.deepEqual(dryRunPayload.removedSessionIds, []);
+
+    const cleanResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--session",
+      sessionId,
+      "--reports",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(cleanResult.code, 0, cleanResult.stderr);
+    const cleanPayload = JSON.parse(cleanResult.stdout);
+    assert.deepEqual(cleanPayload.removedSessionIds, [sessionId]);
+    assert.equal(cleanPayload.removedReports, true);
+
+    await assert.rejects(
+      readFile(
+        join(projectRoot, "runmark", "artifacts", "sessions", `${sessionId}.json`),
+        "utf8",
+      ),
+      /ENOENT/,
+    );
+    await assert.rejects(
+      readFile(
+        join(projectRoot, "runmark", "artifacts", "history", sessionId, "manifest.json"),
+        "utf8",
+      ),
+      /ENOENT/,
+    );
+    await assert.rejects(readFile(reportPath, "utf8"), /ENOENT/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI audit export rejects symlinked output directories", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const externalOutputRoot = await mkdtemp(join(tmpdir(), "runmark-audit-output-"));
+
+  try {
+    await runCompletedFixtureSession(projectRoot);
+    await symlink(externalOutputRoot, join(projectRoot, "audit-link"));
+
+    const auditResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+      "export",
+      "--output",
+      "audit-link/export.json",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(auditResult.code, 2);
+    assert.match(
+      auditResult.stderr,
+      /Output directories must not resolve through a symlink\./,
+    );
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(externalOutputRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI audit export rejects pre-existing symlinked output files", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const externalOutputRoot = await mkdtemp(join(tmpdir(), "runmark-audit-file-"));
+
+  try {
+    await runCompletedFixtureSession(projectRoot);
+    const externalOutputPath = join(externalOutputRoot, "audit.json");
+    await writeFile(externalOutputPath, "{}\n", "utf8");
+    await symlink(externalOutputPath, join(projectRoot, "audit-symlink.json"));
+
+    const auditResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+      "export",
+      "--output",
+      "audit-symlink.json",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(auditResult.code, 2);
+    assert.match(
+      auditResult.stderr,
+      /Output files must not resolve through a symlink\./,
+    );
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(externalOutputRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI clean removes secret companion files with completed sessions", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+
+  try {
+    const sessionId = await runCompletedFixtureSession(projectRoot);
+    const sessionPath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.json`,
+    );
+    const secretStatePath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.secret.json`,
+    );
+
+    await readFile(secretStatePath, "utf8");
+
+    const cleanResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--session",
+      sessionId,
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(cleanResult.code, 0, cleanResult.stderr);
+    const cleanPayload = JSON.parse(cleanResult.stdout);
+    assert.deepEqual(cleanPayload.removedSessionIds, [sessionId]);
+
+    await assert.rejects(readFile(sessionPath, "utf8"), /ENOENT/);
+    await assert.rejects(readFile(secretStatePath, "utf8"), /ENOENT/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI clean rejects symlinked session files", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const externalRoot = await mkdtemp(join(tmpdir(), "runmark-clean-symlink-"));
+
+  try {
+    const sessionId = await runCompletedFixtureSession(projectRoot);
+    const sessionPath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.json`,
+    );
+    const externalSessionPath = join(externalRoot, `${sessionId}.json`);
+    await writeFile(externalSessionPath, await readFile(sessionPath, "utf8"), "utf8");
+    await rm(sessionPath);
+    await symlink(externalSessionPath, sessionPath);
+
+    const cleanResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--session",
+      sessionId,
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(cleanResult.code, 2);
+    assert.match(cleanResult.stderr, /must not resolve through a symlink/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI clean honors state filters and retention flags", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+
+  try {
+    const completedOldest = await runCompletedFixtureSession(projectRoot);
+    const completedKept = await runCompletedFixtureSession(projectRoot);
+    const completedRecent = await runCompletedFixtureSession(projectRoot);
+    const interruptedSessionId = await runInterruptedFixtureSession(projectRoot);
+    const failedSessionId = await runFailedFixtureSession(projectRoot);
+    const pausedSessionId = await runPausedFixtureSession(projectRoot);
+
+    await writeSessionUpdatedAt(
+      projectRoot,
+      completedOldest,
+      "2024-01-01T00:00:00.000Z",
+    );
+    await writeSessionUpdatedAt(
+      projectRoot,
+      completedKept,
+      "2024-01-02T00:00:00.000Z",
+    );
+
+    const cleanResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--state",
+      "completed",
+      "--keep-last",
+      "1",
+      "--older-than-days",
+      "1",
+      "--dry-run",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(cleanResult.code, 0, cleanResult.stderr);
+
+    const cleanPayload = JSON.parse(cleanResult.stdout);
+    assert.deepEqual(cleanPayload.candidateSessionIds, [completedOldest]);
+    assert(cleanPayload.keptSessionIds.includes(completedKept));
+    assert(cleanPayload.keptSessionIds.includes(completedRecent));
+    assert(cleanPayload.keptSessionIds.includes(interruptedSessionId));
+    assert(cleanPayload.keptSessionIds.includes(failedSessionId));
+    assert(cleanPayload.keptSessionIds.includes(pausedSessionId));
+    assert(
+      cleanPayload.skipped.some(
+        (entry) =>
+          entry.sessionId === completedKept &&
+          /Kept by --keep-last 1\./.test(entry.reason),
+      ),
+    );
+    assert(
+      cleanPayload.skipped.some(
+        (entry) =>
+          entry.sessionId === completedRecent &&
+          /newer than the 1-day cutoff/.test(entry.reason),
+      ),
+    );
+    assert(
+      cleanPayload.skipped.some(
+        (entry) =>
+          entry.sessionId === pausedSessionId &&
+          /not a cleanable terminal state/.test(entry.reason),
+      ),
+    );
+
+    const failedCleanResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--state",
+      "failed",
+      "--dry-run",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(failedCleanResult.code, 0, failedCleanResult.stderr);
+    const failedCleanPayload = JSON.parse(failedCleanResult.stdout);
+    assert.deepEqual(failedCleanPayload.candidateSessionIds, [failedSessionId]);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("MCP exports audit summaries for persisted sessions", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const client = new Client(
+    { name: "runmark-audit-test-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: mcpEntrypointArgs,
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--run",
+      "smoke",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 0, runResult.stderr);
+    const sessionId = JSON.parse(runResult.stdout).session.sessionId;
+
+    await client.connect(transport);
+    const auditTool = await client.callTool({
+      name: "export_audit_summary",
+      arguments: {
+        projectRoot,
+        sessionId,
+      },
+    });
+
+    const auditPayload =
+      auditTool.structuredContent ?? JSON.parse(auditTool.content[0].text);
+    assert.equal(auditPayload.sessions.length, 1);
+    assert.equal(auditPayload.sessions[0].sessionId, sessionId);
+    assert.equal(auditPayload.sessions[0].state, "paused");
+    assert(auditPayload.sessions[0].artifacts.length > 0);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+  }
+});
+
+test("MCP cleans terminal runtime state with the same retention surface as the CLI", async () => {
+  const { server, baseUrl } = await startMockServer();
+  const projectRoot = await createFixtureProject(baseUrl);
+  const client = new Client(
+    { name: "runmark-clean-test-client", version: "0.1.0" },
+    { capabilities: {} },
+  );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: mcpEntrypointArgs,
+    cwd: repoRoot,
+    env: process.env,
+    stderr: "pipe",
+  });
+
+  try {
+    const sessionId = await runCompletedFixtureSession(projectRoot);
+    const sessionPath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.json`,
+    );
+    const secretStatePath = join(
+      projectRoot,
+      "runmark",
+      "artifacts",
+      "sessions",
+      `${sessionId}.secret.json`,
+    );
+
+    await readFile(secretStatePath, "utf8");
+    await client.connect(transport);
+
+    const dryRunTool = await client.callTool({
+      name: "clean_runtime_state",
+      arguments: {
+        projectRoot,
+        sessionId,
+        olderThanDays: 0,
+        dryRun: true,
+      },
+    });
+    const dryRunPayload =
+      dryRunTool.structuredContent ?? JSON.parse(dryRunTool.content[0].text);
+    assert.deepEqual(dryRunPayload.candidateSessionIds, [sessionId]);
+    assert.deepEqual(dryRunPayload.removedSessionIds, []);
+
+    const cleanTool = await client.callTool({
+      name: "clean_runtime_state",
+      arguments: {
+        projectRoot,
+        sessionId,
+      },
+    });
+    const cleanPayload =
+      cleanTool.structuredContent ?? JSON.parse(cleanTool.content[0].text);
+    assert.deepEqual(cleanPayload.removedSessionIds, [sessionId]);
+
+    await assert.rejects(readFile(sessionPath, "utf8"), /ENOENT/);
+    await assert.rejects(readFile(secretStatePath, "utf8"), /ENOENT/);
+  } finally {
+    server.close();
+    await rm(projectRoot, { recursive: true, force: true });
+    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
+  }
 });
 
 test("CLI and MCP pin documented validation and runtime error contracts", async () => {
@@ -383,6 +1184,139 @@ test("CLI and MCP pin documented validation and runtime error contracts", async 
       /Run command requires either --request <id> or --run <id>\./,
     );
     assert.match(missingRunTarget.stderr, /Example: runmark run --request ping/);
+
+    const demoNoSubcommand = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "demo",
+    ]);
+    assert.equal(demoNoSubcommand.code, 2);
+    assert.match(demoNoSubcommand.stderr, /Use runmark demo start/);
+
+    const auditNoSubcommand = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+    ]);
+    assert.equal(auditNoSubcommand.code, 2);
+    assert.match(auditNoSubcommand.stderr, /Use runmark audit export/);
+
+    const demoWrongSubcommand = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "demo",
+      "list",
+    ]);
+    assert.equal(demoWrongSubcommand.code, 2);
+    assert.match(demoWrongSubcommand.stderr, /Use runmark demo start/);
+
+    const auditWrongSubcommand = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+      "start",
+    ]);
+    assert.equal(auditWrongSubcommand.code, 2);
+    assert.match(auditWrongSubcommand.stderr, /Use runmark audit export/);
+
+    const listNoTarget = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "list",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(listNoTarget.code, 2);
+    assert.match(
+      listNoTarget.stderr,
+      /Use runmark list <requests\|runs\|envs\|sessions>\./,
+    );
+
+    const listInvalidTarget = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "list",
+      "everything",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(listInvalidTarget.code, 2);
+    assert.match(
+      listInvalidTarget.stderr,
+      /Use runmark list <requests\|runs\|envs\|sessions>\./,
+    );
+
+    const invalidCleanSession = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--session",
+      "../not-a-session",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(invalidCleanSession.code, 2);
+    assert.match(invalidCleanSession.stderr, /Session ID .* is invalid/);
+
+    const missingAuditSession = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "audit",
+      "export",
+      "--session",
+      "missing-session",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(missingAuditSession.code, 2);
+    assert.match(
+      missingAuditSession.stderr,
+      /Session missing-session was not found\./,
+    );
+
+    const missingCleanSessionValue = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--session",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(missingCleanSessionValue.code, 2);
+    assert.match(
+      missingCleanSessionValue.stderr,
+      /Flag --session requires a value\. Use --session <id>\./,
+    );
+
+    const invalidCleanState = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--state",
+      "running",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(invalidCleanState.code, 2);
+    assert.match(
+      invalidCleanState.stderr,
+      /Unsupported --state value running\. Use completed, failed, or interrupted\./,
+    );
+
+    const invalidKeepLast = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--keep-last",
+      "abc",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(invalidKeepLast.code, 2);
+    assert.match(invalidKeepLast.stderr, /--keep-last must be an integer\./);
+
+    const invalidOlderThanDays = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "clean",
+      "--older-than-days",
+      "-1",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(invalidOlderThanDays.code, 2);
+    assert.match(
+      invalidOlderThanDays.stderr,
+      /--older-than-days must be at least 0\./,
+    );
 
     const invalidInput = await runNodeProcess(process.execPath, [
       cliEntrypoint,
@@ -1911,6 +2845,8 @@ test("MCP exposes the documented core tools over stdio", async () => {
       "get_stream_chunks",
       "cancel_session",
       "explain_variables",
+      "export_audit_summary",
+      "clean_runtime_state",
     ]) {
       const tool = tools.tools.find((candidate) => candidate.name === toolName);
       assert(tool);
@@ -2598,6 +3534,37 @@ test("CLI surfaces timeout failures for slow requests", async () => {
   }
 });
 
+test("CLI surfaces loopback connection guidance for refused local requests", async () => {
+  const closedPort = await allocateUnusedLoopbackPort();
+  const projectRoot = await createFixtureProject(`http://127.0.0.1:${closedPort}`);
+
+  try {
+    const runResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "run",
+      "--request",
+      "ping",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(runResult.code, 1);
+    assert.match(
+      runResult.stderr,
+      new RegExp(`Cannot connect to http://127\\.0\\.0\\.1:${closedPort}\\.`),
+    );
+    assert.match(runResult.stderr, /runmark demo start/);
+
+    const failedExecution = JSON.parse(runResult.stdout);
+    assert.equal(failedExecution.session.state, "failed");
+    assert.match(
+      failedExecution.session.failureReason,
+      new RegExp(`Cannot connect to http://127\\.0\\.0\\.1:${closedPort}\\.`),
+    );
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test("CLI and MCP surface invalid timeout diagnostics with source locations", async () => {
   const projectRoot = await createFixtureProject("http://127.0.0.1:1");
   const client = new Client(
@@ -2896,6 +3863,81 @@ async function createFixtureProject(baseUrl) {
   return projectRoot;
 }
 
+async function runPausedFixtureSession(projectRoot) {
+  const runResult = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "run",
+    "--run",
+    "smoke",
+    "--project-root",
+    projectRoot,
+  ]);
+  assert.equal(runResult.code, 0, runResult.stderr);
+  const execution = JSON.parse(runResult.stdout);
+  assert.equal(execution.session.state, "paused");
+  return execution.session.sessionId;
+}
+
+async function runCompletedFixtureSession(projectRoot) {
+  const sessionId = await runPausedFixtureSession(projectRoot);
+  const resumeResult = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "resume",
+    sessionId,
+    "--project-root",
+    projectRoot,
+  ]);
+  assert.equal(resumeResult.code, 0, resumeResult.stderr);
+  const resumedExecution = JSON.parse(resumeResult.stdout);
+  assert.equal(resumedExecution.session.state, "completed");
+  return sessionId;
+}
+
+async function runInterruptedFixtureSession(projectRoot) {
+  const sessionId = await runPausedFixtureSession(projectRoot);
+  const cancelResult = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "cancel",
+    sessionId,
+    "--project-root",
+    projectRoot,
+  ]);
+  assert.equal(cancelResult.code, 0, cancelResult.stderr);
+  const cancelledExecution = JSON.parse(cancelResult.stdout);
+  assert.equal(cancelledExecution.state, "interrupted");
+  return sessionId;
+}
+
+async function runFailedFixtureSession(projectRoot) {
+  const runResult = await runNodeProcess(process.execPath, [
+    cliEntrypoint,
+    "run",
+    "--run",
+    "smoke",
+    "--input",
+    "baseUrl=http://127.0.0.1:1",
+    "--project-root",
+    projectRoot,
+  ]);
+  assert.equal(runResult.code, 1, runResult.stderr);
+  const failedExecution = JSON.parse(runResult.stdout);
+  assert.equal(failedExecution.session.state, "failed");
+  return failedExecution.session.sessionId;
+}
+
+async function writeSessionUpdatedAt(projectRoot, sessionId, updatedAt) {
+  const sessionPath = join(
+    projectRoot,
+    "runmark",
+    "artifacts",
+    "sessions",
+    `${sessionId}.json`,
+  );
+  const session = JSON.parse(await readFile(sessionPath, "utf8"));
+  session.updatedAt = updatedAt;
+  await writeFile(sessionPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
+}
+
 async function startMockServer() {
   const state = {
     flakyUserFailuresRemaining: 1,
@@ -3035,6 +4077,39 @@ async function startMockServer() {
   };
 }
 
+async function allocateUnusedLoopbackPort() {
+  const server = createServer((_request, response) => {
+    response.writeHead(204);
+    response.end();
+  });
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    server.listen(0, "127.0.0.1", (error) => {
+      if (error) {
+        rejectPromise(error);
+        return;
+      }
+      resolvePromise(undefined);
+    });
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const { port } = address;
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    server.close((error) => {
+      if (error) {
+        rejectPromise(error);
+        return;
+      }
+      resolvePromise(undefined);
+    });
+  });
+
+  return port;
+}
+
 function runNodeProcess(command, args, options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, args, {
@@ -3065,6 +4140,61 @@ function runNodeProcess(command, args, options = {}) {
         stdout,
         stderr,
       });
+    });
+  });
+}
+
+function startCliDemoServer() {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [cliEntrypoint, "demo", "start", "--port", "0"], {
+      cwd: repoRoot,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      const baseUrlMatch = stdout.match(/\[runmark demo\] listening on (http:\/\/[^\s]+)/);
+      if (settled || !baseUrlMatch) {
+        return;
+      }
+      settled = true;
+      resolvePromise({
+        baseUrl: baseUrlMatch[1],
+        stdout: () => stdout,
+        stderr: () => stderr,
+        stop: () =>
+          new Promise((resolveStop) => {
+            child.once("close", () => resolveStop());
+            child.kill("SIGINT");
+          }),
+      });
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        rejectPromise(error);
+      }
+    });
+    child.on("close", (code) => {
+      if (!settled) {
+        settled = true;
+        rejectPromise(
+          new Error(
+            `Demo server exited before becoming ready (code ${code ?? "unknown"}).\n${stderr}`,
+          ),
+        );
+      }
     });
   });
 }

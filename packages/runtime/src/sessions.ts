@@ -30,6 +30,12 @@ import {
   getSessionRuntimePaths,
   runtimeFileMode,
 } from "./runtime-paths.js";
+import {
+  mergeSessionSecretState,
+  readSessionSecretState,
+  splitSessionForStorage,
+  writeSessionSecretState,
+} from "./session-secret-state.js";
 
 /**
  * Create the initial persisted session record from a compiled snapshot.
@@ -113,12 +119,25 @@ export async function writeSession(
 ): Promise<void> {
   const runtimePaths = await ensureRuntimePaths(projectRoot);
   const sessionPaths = getSessionRuntimePaths(runtimePaths, session.sessionId);
+  const { storedSession, secretState } = splitSessionForStorage(session);
   await assertProjectOwnedFileIfExists(
     projectRoot,
     sessionPaths.sessionPath,
     `The session file for ${session.sessionId}`,
   );
-  await writeJsonFileAtomic(sessionPaths.sessionPath, session, runtimeFileMode);
+  await assertProjectOwnedFileIfExists(
+    projectRoot,
+    sessionPaths.secretStatePath,
+    `The secret session file for ${session.sessionId}`,
+  );
+  await writeJsonFileAtomic(
+    sessionPaths.sessionPath,
+    storedSession,
+    runtimeFileMode,
+  );
+  // Persist the redacted main session first so an interrupted write cannot leave
+  // secret state ahead of its corresponding primary ledger.
+  await writeSessionSecretState(projectRoot, session.sessionId, secretState);
 }
 
 /** Read and validate one persisted session record. */
@@ -144,7 +163,10 @@ export async function readSession(
   );
   const session = await readJsonFile<SessionRecord>(sessionPaths.sessionPath);
   assertValidSessionRecord(session, sessionId);
-  return session;
+  return mergeSessionSecretState(
+    session,
+    await readSessionSecretState(projectRoot, sessionId),
+  );
 }
 
 /** List persisted sessions in newest-first update order. */
@@ -156,7 +178,12 @@ export async function listSessions(
     withFileTypes: true,
   });
   const sessionFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        entry.name.endsWith(".json") &&
+        !entry.name.endsWith(".secret.json"),
+    )
     .sort((left, right) => left.name.localeCompare(right.name));
 
   const sessions = await Promise.all(

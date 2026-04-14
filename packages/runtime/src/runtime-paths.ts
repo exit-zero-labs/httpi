@@ -23,13 +23,16 @@ export interface RuntimePaths {
   runtimeDir: string;
   sessionsDir: string;
   historyDir: string;
+  reportsDir: string;
   secretsPath: string;
 }
 
 /** Derived paths for one session's state, lock, and artifact files. */
 export interface SessionRuntimePaths {
   sessionPath: string;
+  secretStatePath: string;
   lockFilePath: string;
+  cancelMarkerPath: string;
   artifactRoot: string;
   manifestPath: string;
   eventLogPath: string;
@@ -49,6 +52,7 @@ export async function ensureRuntimePaths(
   const runtimeDir = resolveFromRoot(projectRoot, runtimeDirectoryName);
   const sessionsDir = resolveFromRoot(runtimeDir, "sessions");
   const historyDir = resolveFromRoot(runtimeDir, "history");
+  const reportsDir = resolveFromRoot(runtimeDir, "reports");
   const secretsPath = resolveFromRoot(runtimeDir, "secrets.yaml");
 
   await ensureProjectOwnedDirectory(
@@ -77,6 +81,7 @@ export async function ensureRuntimePaths(
     runtimeDir,
     sessionsDir,
     historyDir,
+    reportsDir,
     secretsPath,
   };
 }
@@ -173,9 +178,17 @@ export function getSessionRuntimePaths(
   const artifactRoot = resolveFromRoot(runtimePaths.historyDir, sessionId);
   return {
     sessionPath: resolveFromRoot(runtimePaths.sessionsDir, `${sessionId}.json`),
+    secretStatePath: resolveFromRoot(
+      runtimePaths.sessionsDir,
+      `${sessionId}.secret.json`,
+    ),
     lockFilePath: resolveFromRoot(
       runtimePaths.sessionsDir,
       `${sessionId}.lock`,
+    ),
+    cancelMarkerPath: resolveFromRoot(
+      runtimePaths.sessionsDir,
+      `${sessionId}.cancel`,
     ),
     artifactRoot,
     manifestPath: resolveFromRoot(artifactRoot, "manifest.json"),

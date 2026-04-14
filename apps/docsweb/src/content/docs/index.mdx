@@ -5,11 +5,13 @@ template: splash
 hero:
   tagline: Repo-native HTTP workflows for developers and coding agents.
   actions:
+    - text: What is Runmark?
+      link: /what-is-runmark/
+      icon: right-arrow
     - text: Read the quickstart
       link: /guides/quickstart/
-      icon: right-arrow
-    - text: Migrate from httpi
-      link: /guides/migrate-from-httpi/
+    - text: Inspect + resume
+      link: /guides/inspect-and-resume/
     - text: View on GitHub
       link: https://github.com/exit-zero-labs/runmark
       icon: external
@@ -20,45 +22,63 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 Runmark keeps tracked request intent in `runmark/`, runtime evidence in
 `runmark/artifacts/`, and exposes the same execution model through both the CLI
-and MCP.
+and MCP. Start with the product path below: understand the model, get a demo
+project green, inspect a paused run, then move into team and reference docs as
+needed.
 
 <CardGrid stagger>
+  <Card title="What is Runmark?" icon="open-book" href="/what-is-runmark/">
+    See the product model, where it fits, and why tracked files plus runtime
+    evidence are the core idea.
+  </Card>
   <Card title="Quickstart" icon="pencil" href="/guides/quickstart/">
-    Install `@exit-zero-labs/runmark`, scaffold a project, and run your first
+    Scaffold a demo-ready project, see the expected output, and run your first
     tracked workflow.
   </Card>
   <Card
-    title="Migrate from httpi"
-    icon="right-arrow"
-    href="/guides/migrate-from-httpi/"
+    title="Inspect + resume"
+    icon="setting"
+    href="/guides/inspect-and-resume/"
   >
-    Update existing `httpi` installs, MCP configs, and on-disk project folders
-    to Runmark.
-  </Card>
-  <Card
-    title="Brand foundation"
-    icon="open-book"
-    href="/runmark/brand-foundation/"
-  >
-    See the product narrative, category framing, and differentiation behind the
-    Runmark name.
-  </Card>
-  <Card title="Agent guide" icon="setting" href="/guides/agent-guide/">
-    Follow the recommended validation, inspection, and resume loop for coding
-    agents.
-  </Card>
-  <Card
-    title="Technical architecture"
-    icon="open-book"
-    href="/reference/technical-architecture/"
-  >
-    See package boundaries, runtime model, and the on-disk project structure.
+    Follow the paused, failed, and resumed session flow with real CLI output and
+    artifact inspection.
   </Card>
   <Card
     title="Examples"
     icon="open-book"
-    href="https://github.com/exit-zero-labs/runmark/tree/main/examples"
+    href="/guides/examples/"
   >
-    Browse the checked-in example projects that back the automated test suite.
+    Choose the best checked-in example for first success, pause/resume, CI, or
+    longer business workflows.
+  </Card>
+  <Card
+    title="CI and team adoption"
+    icon="open-book"
+    href="/guides/ci-and-team-adoption/"
+  >
+    Copy GitHub Actions, PR review, and monorepo patterns for shared repos.
+  </Card>
+  <Card
+    title="Security and privacy"
+    icon="open-book"
+    href="/trust/security-and-privacy/"
+  >
+    See what Runmark stores locally, what it redacts, and how cleanup plus audit
+    export fit together.
+  </Card>
+  <Card
+    title="YAML reference"
+    icon="open-book"
+    href="/reference/yaml-reference/"
+  >
+    Learn the tracked file model for config, env, request, run, and block YAML.
+  </Card>
+  <Card
+    title="CLI reference"
+    icon="open-book"
+    href="/reference/cli-reference/"
+  >
+    Use the command reference for help-parity syntax, lifecycle commands, and
+    output conventions.
   </Card>
 </CardGrid>

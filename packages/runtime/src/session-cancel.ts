@@ -4,12 +4,12 @@ import {
   fileExists,
   RunmarkError,
   removeFileIfExists,
-  resolveFromRoot,
   toIsoTimestamp,
 } from "@exit-zero-labs/runmark-shared";
 import {
   assertValidSessionId,
   ensureRuntimePaths,
+  getSessionRuntimePaths,
   runtimeFileMode,
 } from "./runtime-paths.js";
 
@@ -28,10 +28,6 @@ export interface SessionCancelRecord {
   source?: string;
 }
 
-function cancelMarkerPath(runtimeDir: string, sessionId: string): string {
-  return resolveFromRoot(runtimeDir, "sessions", `${sessionId}.cancel`);
-}
-
 /** Write the cross-process cancel marker that executors poll while running. */
 export async function requestSessionCancel(
   projectRoot: string,
@@ -40,7 +36,10 @@ export async function requestSessionCancel(
 ): Promise<SessionCancelRecord> {
   assertValidSessionId(sessionId);
   const runtimePaths = await ensureRuntimePaths(projectRoot);
-  const markerPath = cancelMarkerPath(runtimePaths.runtimeDir, sessionId);
+  const markerPath = getSessionRuntimePaths(
+    runtimePaths,
+    sessionId,
+  ).cancelMarkerPath;
   const record: SessionCancelRecord = {
     sessionId,
     requestedAt: toIsoTimestamp(),
@@ -60,7 +59,10 @@ export async function readSessionCancel(
 ): Promise<SessionCancelRecord | undefined> {
   assertValidSessionId(sessionId);
   const runtimePaths = await ensureRuntimePaths(projectRoot);
-  const markerPath = cancelMarkerPath(runtimePaths.runtimeDir, sessionId);
+  const markerPath = getSessionRuntimePaths(
+    runtimePaths,
+    sessionId,
+  ).cancelMarkerPath;
   if (!(await fileExists(markerPath))) return undefined;
   try {
     const raw = await readFile(markerPath, "utf8");
@@ -191,6 +193,9 @@ export async function clearSessionCancel(
 ): Promise<void> {
   assertValidSessionId(sessionId);
   const runtimePaths = await ensureRuntimePaths(projectRoot);
-  const markerPath = cancelMarkerPath(runtimePaths.runtimeDir, sessionId);
+  const markerPath = getSessionRuntimePaths(
+    runtimePaths,
+    sessionId,
+  ).cancelMarkerPath;
   await removeFileIfExists(markerPath);
 }

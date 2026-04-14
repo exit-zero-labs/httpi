@@ -3,97 +3,142 @@ title: Quickstart
 description: Install Runmark, scaffold a project, and run your first workflow.
 ---
 
-Runmark is a file-based HTTP workflow runner for repositories. It keeps tracked
-request intent in `runmark/`, Git-ignored runtime state in
+Runmark keeps tracked request intent in `runmark/`, Git-ignored runtime state in
 `runmark/artifacts/`, and exposes the same execution model through both a CLI
 and an MCP server.
 
 ## Install
 
-One package, two surfaces:
+Use the install shape that fits your repo:
+
+### Global install
 
 ```bash
 npm install -g @exit-zero-labs/runmark
+runmark --version
 ```
 
-- `runmark` — the CLI for humans and scripts
-- `runmark mcp` — the stdio MCP server for coding agents
+### Repo-local / CI install
 
-## Start a project
+```bash
+npm install --save-dev @exit-zero-labs/runmark
+npx runmark --version
+```
+
+If you chose the repo-local install above, prefix the commands below with `npx`
+(for example, `npx runmark init`). Global installs can use `runmark` directly.
+
+## 1. Scaffold a project
 
 ```bash
 mkdir demo-api && cd demo-api
 runmark init
 ```
 
-That gives you a small but real starting point: one environment, one request,
-one run, and schema-aware YAML files.
+You should see output similar to:
 
-After `init`, the normal first loop is:
+```json
+{
+  "rootDir": "/path/to/demo-api",
+  "createdPaths": [
+    "/path/to/demo-api/runmark/artifacts/.gitkeep",
+    "/path/to/demo-api/runmark/artifacts/history/.gitkeep",
+    "/path/to/demo-api/runmark/artifacts/sessions/.gitkeep",
+    "/path/to/demo-api/runmark/config.yaml",
+    "/path/to/demo-api/runmark/env/dev.env.yaml",
+    "/path/to/demo-api/runmark/requests/ping.request.yaml",
+    "/path/to/demo-api/runmark/runs/smoke.run.yaml",
+    "/path/to/demo-api/.gitignore"
+  ],
+  "nextSteps": [
+    "In another terminal: runmark demo start",
+    "Then run: runmark run --run smoke"
+  ]
+}
+```
+
+`/path/to/demo-api` stands in for your actual absolute project path. The real `init` output also includes the runtime `.gitkeep` placeholders and the root `.gitignore`.
+
+`runmark init` gives you a small but real starting point: one environment, one
+request, one run, and schema-aware YAML files. The scaffolded `dev` env already
+points at the bundled demo server on `http://127.0.0.1:4318`.
+
+## 2. Start the bundled demo API
+
+In another terminal:
 
 ```bash
-# edit runmark/env/dev.env.yaml so baseUrl points at your service
+runmark demo start
+```
+
+Leave it running while you work through the quickstart.
+
+## 3. Validate and inspect the tracked files
+
+```bash
 runmark validate
 runmark describe --run smoke
+```
+
+Validation output looks like:
+
+```json
+{
+  "rootDir": "./demo-api",
+  "diagnostics": []
+}
+```
+
+What you should see:
+
+- `diagnostics` is empty
+- `describe --run smoke` shows a single `ping` request step
+- no HTTP has been sent yet
+
+## 4. Execute the run
+
+```bash
 runmark run --run smoke
 ```
 
-If the flow needs local secrets, add them under `runmark/artifacts/secrets.yaml`:
+Execution output looks like:
+
+```json
+{
+  "session": {
+    "sessionId": "run-<timestamp>-<id>",
+    "state": "completed",
+    "runId": "smoke",
+    "artifactManifestPath": "runmark/artifacts/history/<sessionId>/manifest.json"
+  },
+  "diagnostics": []
+}
+```
+
+What you should see:
+
+- `session.state` is `completed`
+- `diagnostics` is empty
+- runtime evidence now exists under `runmark/artifacts/history/<sessionId>/`
+
+## 5. Add local secrets only when the flow needs them
+
+When a request or run references `{{secrets.alias}}`, add that alias under
+`runmark/artifacts/secrets.yaml`:
 
 ```yaml
 devPassword: swordfish
 apiToken: sk_test_123
 ```
 
-Tracked files can reference `{{secrets.alias}}` or `$ENV:NAME`, but secret
-literals should stay out of `runmark/`.
-
-## Project layout
-
-```text
-demo-api/
-└── runmark/
-    ├── config.yaml
-    ├── env/
-    │   └── dev.env.yaml
-    ├── requests/
-    │   └── ping.request.yaml
-    ├── runs/
-    │   └── smoke.run.yaml
-    └── artifacts/
-        ├── secrets.yaml
-        ├── sessions/
-        └── history/
-```
-
-| Path | Purpose |
-| --- | --- |
-| `runmark/` | Git-tracked requests, runs, envs, blocks, body templates, and the Git-ignored runtime subtree |
-| `runmark/artifacts/` | Local secrets, session state, locks, and captured request artifacts |
-
-## Core commands
-
-| Goal | Command |
-| --- | --- |
-| scaffold a project | `runmark init` |
-| discover requests, runs, envs, or sessions | `runmark list` |
-| validate before execution | `runmark validate` |
-| inspect a request or run shape | `runmark describe` |
-| inspect resolved values and provenance | `runmark explain variables` |
-| execute a request or run | `runmark run` |
-| inspect a paused or failed session | `runmark session show` |
-| inspect captured evidence | `runmark artifacts list` / `runmark artifacts read` |
-| continue a paused or failed workflow | `runmark resume` |
+Tracked files can also reference `$ENV:NAME`, but secret literals should stay
+out of `runmark/`.
 
 ## Next reads
 
-- [Migrate from httpi](/guides/migrate-from-httpi/) if you already use the old
-  package, command, or project folder name
-- [Runmark brand foundation](/runmark/brand-foundation/) for the product
-  narrative and positioning system
-- [Agent guide](/guides/agent-guide/) for the recommended CLI and MCP loop
-- [Product overview](/reference/product-overview/) for positioning and scope
-- [Technical architecture](/reference/technical-architecture/) for package
-  boundaries and runtime semantics
-- [Examples on GitHub](https://github.com/exit-zero-labs/runmark/tree/main/examples)
-  for copyable reference projects
+- [What is Runmark?](/what-is-runmark/) for the product model and fit
+- [Inspect + resume](/guides/inspect-and-resume/) for paused and failed runs
+- [Examples](/guides/examples/) for copyable reference projects
+- [CI and team adoption](/guides/ci-and-team-adoption/) for repo-local and GitHub Actions usage
+- [Security and privacy](/trust/security-and-privacy/) for storage, redaction, and retention notes
+- [YAML reference](/reference/yaml-reference/) for the tracked file fields

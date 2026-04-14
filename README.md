@@ -13,10 +13,20 @@ Use it when API validation should live next to the code it exercises, with expli
 
 ## Install
 
-One package, two surfaces:
+Use whichever install surface fits the repo you are working in:
+
+### Global install
 
 ```bash
 npm install -g @exit-zero-labs/runmark
+runmark --version
+```
+
+### Repo-local / CI install
+
+```bash
+npm install --save-dev @exit-zero-labs/runmark
+npx runmark --version
 ```
 
 To update an existing global install:
@@ -28,6 +38,8 @@ runmark --version
 
 - `runmark` — the CLI for humans and scripts.
 - `runmark mcp` — the stdio MCP server for agents (same engine, same redaction, same artifacts).
+
+If you chose the repo-local install above, prefix the commands below with `npx` (for example, `npx runmark init`). Global installs can use `runmark` directly.
 
 ```bash
 mkdir demo-api && cd demo-api
@@ -45,16 +57,65 @@ runmark init
 
 ## Quick start
 
-After `init`, the normal first loop is:
+After `init`, start the bundled demo API in another terminal and run:
 
 ```bash
-# edit runmark/env/dev.env.yaml so baseUrl points at your service
+runmark demo start
 runmark validate
 runmark describe --run smoke
 runmark run --run smoke
 ```
 
-`runmark init` gives you a small but real starting point: one environment, one request, one run, and schema-aware YAML files.
+`runmark init` gives you a small but real starting point: one environment, one request, one run, and schema-aware YAML files. The scaffolded `dev` env already points at the bundled demo server on `http://127.0.0.1:4318`, so you can reach first success before wiring your own service.
+
+Typical output looks like this:
+
+```json
+{
+  "rootDir": "/path/to/demo-api",
+  "createdPaths": [
+    "/path/to/demo-api/runmark/artifacts/.gitkeep",
+    "/path/to/demo-api/runmark/artifacts/history/.gitkeep",
+    "/path/to/demo-api/runmark/artifacts/sessions/.gitkeep",
+    "/path/to/demo-api/runmark/config.yaml",
+    "/path/to/demo-api/runmark/env/dev.env.yaml",
+    "/path/to/demo-api/runmark/requests/ping.request.yaml",
+    "/path/to/demo-api/runmark/runs/smoke.run.yaml",
+    "/path/to/demo-api/.gitignore"
+  ],
+  "nextSteps": [
+    "In another terminal: runmark demo start",
+    "Then run: runmark run --run smoke"
+  ]
+}
+```
+
+`/path/to/demo-api` stands in for your actual absolute project path. The real `init` output also includes the runtime `.gitkeep` placeholders and the root `.gitignore`.
+
+```json
+{
+  "rootDir": "./demo-api",
+  "diagnostics": []
+}
+```
+
+```json
+{
+  "session": {
+    "sessionId": "run-<timestamp>-<id>",
+    "state": "completed",
+    "runId": "smoke",
+    "artifactManifestPath": "runmark/artifacts/history/<sessionId>/manifest.json"
+  },
+  "diagnostics": []
+}
+```
+
+What you should see:
+
+- `init` prints created paths plus `nextSteps`.
+- `validate` returns an empty `diagnostics` array.
+- `run --run smoke` ends with `session.state: "completed"` and writes artifacts under `runmark/artifacts/history/<sessionId>/`.
 
 If the flow needs local secrets, add them under `runmark/artifacts/secrets.yaml`:
 
@@ -64,6 +125,64 @@ apiToken: sk_test_123
 ```
 
 Tracked files can reference `{{secrets.alias}}` or `$ENV:NAME`, but secret literals should stay out of `runmark/`.
+
+Session files that carry secret values are split on purpose:
+
+- `runmark/artifacts/sessions/<sessionId>.json` keeps the inspectable session ledger with redacted placeholders.
+- `runmark/artifacts/sessions/<sessionId>.secret.json` keeps the local secret companion state with owner-only permissions.
+- `runmark audit export` never inlines the secret companion payload.
+- `runmark clean` removes the main session file and its secret companion together.
+
+The same JSON shape also makes pause, failure, and resume states easy to recognize:
+
+```json
+{
+  "session": {
+    "sessionId": "run-<timestamp>-<id>",
+    "state": "paused",
+    "nextStepId": "touch-user",
+    "pausedReason": "Inspect fetched artifacts before mutation",
+    "stepOutputs": {
+      "login": { "sessionValue": "[REDACTED]" },
+      "get-user": { "userName": "Ada" },
+      "list-orders": { "firstOrderId": "ord_1" }
+    }
+  },
+  "diagnostics": []
+}
+```
+
+```json
+{
+  "session": {
+    "sessionId": "run-<timestamp>-<id>",
+    "state": "failed",
+    "nextStepId": "fetch-report",
+    "failureReason": "Assertion failed: status equals expected 200 but got 503."
+  },
+  "diagnostics": [
+    {
+      "code": "EXPECTATION_FAILED",
+      "file": "runmark/requests/recovery/fetch-report.request.yaml",
+      "line": 7,
+      "message": "status equals: expected 200, got 503"
+    }
+  ]
+}
+```
+
+```json
+{
+  "session": {
+    "sessionId": "run-<timestamp>-<id>",
+    "state": "completed",
+    "runId": "smoke"
+  },
+  "diagnostics": []
+}
+```
+
+Use [`docs/inspect-and-resume.md`](docs/inspect-and-resume.md) for the full pause/fail/resume loop, including artifact inspection and the exit-code-3 safety rules.
 
 When a run pauses or fails, the next move stays explicit:
 
@@ -100,6 +219,15 @@ demo-api/
 
 In normal projects, `runmark/artifacts/` should stay Git-ignored apart from tracked `.gitkeep` placeholders. The checked-in examples in this repo include a small `runmark/artifacts/` skeleton so the runtime layout is easy to inspect.
 
+## Secret storage
+
+`runmark` keeps runtime secrets out of the shareable session ledger.
+
+- Main session files store redacted placeholders so CLI output, MCP responses, and audit exports stay safe to inspect.
+- Secret companion files live under `runmark/artifacts/sessions/*.secret.json` and should be treated as sensitive local runtime state in backup and retention policies.
+- `runmark audit export` never includes companion-file contents.
+- `runmark clean` removes session ledgers and companion files together.
+
 ## Operational properties
 
 - **Validate before execution.** Catch schema, wiring, and safety issues before HTTP goes out.
@@ -124,6 +252,22 @@ All checked-in reference projects live under [`examples/`](examples/README.md), 
 | [`examples/failure-recovery`](examples/failure-recovery) | failure handling | failed sessions, history capture, and resume after recovery |
 
 These examples are maintained reference projects with automated coverage behind them.
+
+## CI and team adoption
+
+`runmark` works well as a repo-local validation tool:
+
+- install it as a dev dependency and call it through `npx runmark` / `pnpm exec runmark`
+- keep tracked request intent under `runmark/` and keep `runmark/artifacts/` Git-ignored
+- upload `runmark audit export`, `runmark/artifacts/history/`, reporter outputs, or selected redacted session ledgers when CI or reviewers need evidence
+- never upload `runmark/artifacts/secrets.yaml` or `runmark/artifacts/sessions/*.secret.json`
+- materialize local secrets from CI secrets or an external secret manager at runtime instead of committing them
+
+Use these guides when the project moves beyond a single laptop:
+
+- [`docs/ci-and-team-adoption.md`](docs/ci-and-team-adoption.md)
+- [`docs/external-secret-sources.md`](docs/external-secret-sources.md)
+- [`docs/error-codes.md`](docs/error-codes.md)
 
 ## Core workflow
 
@@ -183,6 +327,8 @@ Registered tools:
 - `get_stream_chunks`
 - `cancel_session`
 - `explain_variables`
+- `export_audit_summary`
+- `clean_runtime_state` — supports dry-run, state filters, and retention flags
 
 ## Troubleshooting
 
@@ -190,9 +336,23 @@ Registered tools:
 | --- | --- | --- |
 | `No runmark/config.yaml found...` | You are outside a project root. | Run `runmark init`, move into the project directory, or pass `--project-root`. |
 | `validate` reports schema or YAML errors | A tracked file has the wrong shape or syntax. | Fix the reported file and rerun `validate`. |
-| Requests cannot connect | `baseUrl` is wrong or the service is not running. | Update `runmark/env/*.env.yaml` and retry. |
+| Requests cannot connect | `baseUrl` is wrong or the service is not running. | Start `runmark demo start` for the bundled local API, or update `runmark/env/*.env.yaml` to point at your service and retry. |
 | Secrets lookup fails | `runmark/artifacts/secrets.yaml` is missing or incomplete. | Create or update the local secret alias. |
 | `resume` exits with code `3` | Tracked definitions changed or another process still holds the session lock. | Retry after the lock clears; if definitions drifted, start a fresh run instead of forcing resume. |
+
+## Trust and data handling
+
+- `runmark` keeps tracked intent in `runmark/` and local runtime evidence in `runmark/artifacts/`.
+- New scaffolds default to `responseBody: metadata` so first runs stay smaller and safer.
+- Main session files stay inspectable and redacted; secret companions stay local in `*.secret.json`.
+- `runmark clean` applies retention policies to terminal sessions, and `runmark audit export` produces a redacted handoff summary.
+- `runmark` does not send product telemetry; network traffic comes from the requests and auth flows you configure.
+
+For the full safety model, see:
+
+- [`docs/security-and-privacy.md`](docs/security-and-privacy.md)
+- [`docs/filesystem-safety.md`](docs/filesystem-safety.md)
+- [`docs/unsafe-resume.md`](docs/unsafe-resume.md)
 
 ## Support
 
@@ -205,9 +365,16 @@ See [`docs/support.md`](docs/support.md) for what donations fund and how the two
 
 ## Learn more
 
-- [`examples/README.md`](examples/README.md) for the full example catalog
-- [`docs/agent-guide.md`](docs/agent-guide.md) for CLI and MCP validation loops
 - [`docs/product.md`](docs/product.md) for the product framing
+- [`docs/inspect-and-resume.md`](docs/inspect-and-resume.md) for the canonical paused / failed / resumed workflow
+- [`docs/examples.md`](docs/examples.md) for the example catalog and recommended starting order
+- [`docs/ci-and-team-adoption.md`](docs/ci-and-team-adoption.md) for GitHub Actions, PR review, and monorepo patterns
+- [`docs/security-and-privacy.md`](docs/security-and-privacy.md) for storage, redaction, retention, and telemetry notes
+- [`docs/yaml-reference.md`](docs/yaml-reference.md) for the tracked YAML field guide
+- [`docs/cli-reference.md`](docs/cli-reference.md) for subcommand behavior and output conventions
+- [`docs/outputs-and-runtime-files.md`](docs/outputs-and-runtime-files.md) for CLI/MCP JSON shapes plus runtime file layout
+- [`docs/error-codes.md`](docs/error-codes.md) for exit codes and common diagnostic families
+- [`docs/agent-guide.md`](docs/agent-guide.md) for CLI and MCP validation loops
 - [`docs/support.md`](docs/support.md) for donation and sustainability notes
 - [`CHANGELOG.md`](CHANGELOG.md) for user-visible release notes
-- [`docs/get-started.md`](docs/get-started.md) for local development, repo layout, and contributor workflows
+- [`docs/get-started.md`](docs/get-started.md) for contributor setup and local development

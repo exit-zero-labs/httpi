@@ -89,6 +89,95 @@ function buildCapturedResponse(
   };
 }
 
+function buildNetworkFailure(
+  requestUrl: string,
+  error: unknown,
+): { message: string; hint: string } {
+  const origin = parseRequestOrigin(requestUrl);
+  if (isConnectionRefusedError(error) && origin) {
+    if (isLoopbackOrigin(origin)) {
+      return {
+        message:
+          `HTTP request failed: Cannot connect to ${origin}. ` +
+          "If you're using the scaffolded demo setup, start the bundled API first with `runmark demo start`.",
+        hint:
+          "Otherwise, check that your local service is running and that the target URL is correct.",
+      };
+    }
+
+    return {
+      message: `HTTP request failed: Cannot connect to ${origin}.`,
+      hint:
+        "Check that the service is running and that the target URL is correct.",
+    };
+  }
+
+  const message = coerceErrorMessage(error);
+  return {
+    message: `HTTP request failed: ${message}`,
+    hint: "Check network connectivity and the target URL.",
+  };
+}
+
+function parseRequestOrigin(requestUrl: string): string | undefined {
+  try {
+    return new URL(requestUrl).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    const normalizedHostname = hostname.replace(/^\[(.*)\]$/, "$1");
+    return (
+      normalizedHostname === "127.0.0.1" ||
+      normalizedHostname === "localhost" ||
+      normalizedHostname === "::1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isConnectionRefusedError(error: unknown): boolean {
+  return extractErrorCode(error) === "ECONNREFUSED" || /ECONNREFUSED/.test(
+    extractCauseMessage(error),
+  );
+}
+
+function extractErrorCode(error: unknown): string | undefined {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+
+  if (
+    error instanceof Error &&
+    typeof error.cause === "object" &&
+    error.cause !== null &&
+    "code" in error.cause &&
+    typeof error.cause.code === "string"
+  ) {
+    return error.cause.code;
+  }
+
+  return undefined;
+}
+
+function extractCauseMessage(error: unknown): string {
+  if (error instanceof Error && error.cause instanceof Error) {
+    return coerceErrorMessage(error.cause);
+  }
+
+  return "";
+}
+
 /**
  * Execute one resolved HTTP request and normalize the response for the engine.
  *
@@ -133,14 +222,20 @@ export async function executeHttpRequest(
 
     response = await fetch(request.url, requestInit);
   } catch (error) {
-    const message = coerceErrorMessage(error);
     const errorClass =
       error instanceof DOMException && error.name === "TimeoutError"
         ? "timeout"
         : "network";
+    const failure =
+      errorClass === "timeout"
+        ? {
+            message: `HTTP request failed: ${coerceErrorMessage(error)}`,
+            hint: `Request timed out after ${request.timeoutMs}ms. Increase timeoutMs or check the server.`,
+          }
+        : buildNetworkFailure(request.url, error);
     throw new HttpExecutionError(
       "HTTP_REQUEST_FAILED",
-      `HTTP request failed: ${message}`,
+      failure.message,
       {
         cause: error,
         exitCode: exitCodes.executionFailure,
@@ -152,11 +247,8 @@ export async function executeHttpRequest(
           {
             level: "error" as const,
             code: "HTTP_REQUEST_FAILED",
-            message: `HTTP request failed: ${message}`,
-            hint:
-              errorClass === "timeout"
-                ? `Request timed out after ${request.timeoutMs}ms. Increase timeoutMs or check the server.`
-                : "Check network connectivity and the target URL.",
+            message: failure.message,
+            hint: failure.hint,
           },
         ],
       },

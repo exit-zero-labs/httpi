@@ -40,6 +40,7 @@ async function assertPublishablePackage({
   assert.equal(packSummary.name, expectedName);
   assert(packSummary.files.some((file) => file.path === "dist/index.js"));
   assert(packSummary.files.some((file) => file.path === "README.md"));
+  assert(packSummary.files.some((file) => file.path === "CHANGELOG.md"));
   assert(packSummary.files.some((file) => file.path === "LICENSE"));
 
   const smokeResult = await runProcess(process.execPath, smokeArgs, directory);

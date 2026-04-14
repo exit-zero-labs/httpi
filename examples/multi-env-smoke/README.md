@@ -8,8 +8,8 @@ The checked-in `runmark/artifacts/` directory is only there to show the runtime 
 
 ## Setup
 
-1. edit both files under `runmark/env/` so `baseUrl` points at the matching environment
-2. run the smoke flow against the env you want
+1. start `runmark demo start` in another terminal
+2. run the smoke flow against the env you want (the checked-in env files already point at the demo server)
 
 ```bash
 runmark validate --project-root examples/multi-env-smoke

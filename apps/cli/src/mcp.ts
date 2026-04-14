@@ -7,9 +7,11 @@
 import { isDiagnostic } from "@exit-zero-labs/runmark-contracts";
 import {
   cancelSessionRun,
+  cleanProjectRuntime,
   describeRequest,
   describeRun,
   explainVariables,
+  exportProjectAudit,
   getSessionState,
   getSessionStreamChunks,
   listProjectDefinitions,
@@ -73,11 +75,43 @@ const definitionSummarySchema = z.object({
   filePath: z.string(),
 });
 
+const sessionStateSchema = z.enum([
+  "created",
+  "running",
+  "paused",
+  "failed",
+  "completed",
+  "interrupted",
+]);
+
+const cleanableSessionStateSchema = z.enum([
+  "completed",
+  "failed",
+  "interrupted",
+]);
+
+const stepKindSchema = z.enum([
+  "request",
+  "parallel",
+  "pause",
+  "pollUntil",
+  "switch",
+]);
+
+const stepStateSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "paused",
+  "interrupted",
+]);
+
 const sessionSummarySchema = z.object({
   sessionId: z.string(),
   runId: z.string(),
   envId: z.string(),
-  state: z.enum(["created", "running", "paused", "failed", "completed"]),
+  state: sessionStateSchema,
   nextStepId: z.string().optional(),
   updatedAt: z.string(),
 });
@@ -200,6 +234,76 @@ const explainVariablesOutputSchema = {
   envId: z.string().optional(),
   variables: z.array(variableExplanationSchema).optional(),
   diagnostics: z.array(diagnosticSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const auditExportSessionSchema = z.object({
+  sessionId: z.string(),
+  runId: z.string(),
+  envId: z.string(),
+  state: sessionStateSchema,
+  nextStepId: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  pausedReason: z.string().optional(),
+  failureReason: z.string().optional(),
+  artifactManifestPath: z.string(),
+  eventLogPath: z.string(),
+  artifactCounts: z.object({
+    request: z.number(),
+    body: z.number(),
+    streamChunks: z.number(),
+    streamAssembled: z.number(),
+    responseBinary: z.number(),
+  }),
+  artifacts: z.array(artifactEntrySchema),
+  steps: z.array(
+    z.object({
+      stepId: z.string(),
+      kind: stepKindSchema,
+      state: stepStateSchema,
+      requestId: z.string().optional(),
+      attempts: z.array(z.unknown()),
+    }),
+  ),
+});
+
+const auditExportSuccessOutputSchema = z.object({
+  schemaVersion: z.number(),
+  generatedAt: z.string(),
+  rootDir: z.string(),
+  sessions: z.array(auditExportSessionSchema),
+});
+
+const auditExportOutputSchema = {
+  // Success-path fields stay optional here because MCP tool errors share the
+  // same structuredContent envelope and only include { code, message }.
+  schemaVersion: auditExportSuccessOutputSchema.shape.schemaVersion.optional(),
+  generatedAt: auditExportSuccessOutputSchema.shape.generatedAt.optional(),
+  rootDir: auditExportSuccessOutputSchema.shape.rootDir.optional(),
+  sessions: auditExportSuccessOutputSchema.shape.sessions.optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+};
+
+const cleanRuntimeOutputSchema = {
+  rootDir: z.string().optional(),
+  dryRun: z.boolean().optional(),
+  candidateSessionIds: z.array(z.string()).optional(),
+  removedSessionIds: z.array(z.string()).optional(),
+  keptSessionIds: z.array(z.string()).optional(),
+  skipped: z
+    .array(
+      z.object({
+        sessionId: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .optional(),
+  removedPaths: z.array(z.string()).optional(),
+  removedReports: z.boolean().optional(),
+  removedSecrets: z.boolean().optional(),
   code: z.string().optional(),
   message: z.string().optional(),
 };
@@ -478,6 +582,67 @@ export function createMcpServer(): McpServer {
           projectRoot,
           envId,
           overrides,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "export_audit_summary",
+    {
+      description:
+        "Export a redacted audit summary for one session or every persisted session in a runmark project.",
+      inputSchema: {
+        sessionId: z.string().optional(),
+        ...engineOptionsSchema,
+      },
+      outputSchema: auditExportOutputSchema,
+    },
+    async ({ sessionId, projectRoot }) =>
+      handleTool(async () =>
+        exportProjectAudit({
+          projectRoot,
+          sessionId,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "clean_runtime_state",
+    {
+      description:
+        "Remove terminal runtime sessions plus optional reports or global secret files from a runmark project. Supports dry-run, state filters, and retention controls.",
+      inputSchema: {
+        sessionId: z.string().optional(),
+        states: z.array(cleanableSessionStateSchema).optional(),
+        keepLast: z.number().int().nonnegative().optional(),
+        olderThanDays: z.number().int().nonnegative().optional(),
+        includeReports: z.boolean().optional(),
+        includeSecrets: z.boolean().optional(),
+        dryRun: z.boolean().optional(),
+        ...engineOptionsSchema,
+      },
+      outputSchema: cleanRuntimeOutputSchema,
+    },
+    async ({
+      sessionId,
+      states,
+      keepLast,
+      olderThanDays,
+      includeReports,
+      includeSecrets,
+      dryRun,
+      projectRoot,
+    }) =>
+      handleTool(async () =>
+        cleanProjectRuntime({
+          projectRoot,
+          sessionId,
+          states,
+          keepLast,
+          olderThanDays,
+          includeReports,
+          includeSecrets,
+          dryRun,
         }),
       ),
   );

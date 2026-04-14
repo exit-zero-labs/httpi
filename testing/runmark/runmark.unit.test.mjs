@@ -26,6 +26,7 @@ import {
   ensureRuntimePaths,
   readSession,
   releaseSessionLock,
+  writeSession,
   writeStepArtifacts,
 } from "../../packages/runtime/dist/index.js";
 import {
@@ -254,6 +255,148 @@ test("session output redaction honors secret output metadata", () => {
     redactedSession.compiled.steps[0].request.defaults.label,
     "safe",
   );
+});
+
+test("runtime session round-trips restore secret step outputs in step records", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "runmark-session-roundtrip-"));
+
+  try {
+    const session = {
+      schemaVersion: 1,
+      sessionId: "run_roundtrip",
+      source: "run",
+      runId: "smoke",
+      envId: "dev",
+      state: "paused",
+      nextStepId: "touch-user",
+      compiled: {
+        schemaVersion: 1,
+        source: "run",
+        runId: "smoke",
+        envId: "dev",
+        sourceFilePath: join(projectRoot, "runmark", "runs", "smoke.run.yaml"),
+        configPath: join(projectRoot, "runmark", "config.yaml"),
+        configHash: "config-hash",
+        configDefaults: {},
+        capture: {
+          requestSummary: true,
+          responseMetadata: true,
+          responseBody: "full",
+          maxBodyBytes: 1024,
+          redactHeaders: ["authorization"],
+        },
+        envPath: join(projectRoot, "runmark", "env", "dev.env.yaml"),
+        envHash: "env-hash",
+        envValues: {},
+        runInputs: {},
+        overrideKeys: [],
+        definitionHashes: {},
+        steps: [
+          {
+            kind: "request",
+            id: "login",
+            requestId: "auth/login",
+            with: {},
+            request: {
+              requestId: "auth/login",
+              filePath: join(
+                projectRoot,
+                "runmark",
+                "requests",
+                "auth",
+                "login.request.yaml",
+              ),
+              hash: "login-request-hash",
+              method: "POST",
+              url: "{{baseUrl}}/auth/login",
+              defaults: {},
+              headers: {},
+              headerBlocks: [],
+              expect: {},
+              extract: {},
+            },
+          },
+          {
+            kind: "request",
+            id: "touch-user",
+            requestId: "users/touch-user",
+            with: {
+              authToken: "{{steps.login.sessionValue}}",
+            },
+            request: {
+              requestId: "users/touch-user",
+              filePath: join(
+                projectRoot,
+                "runmark",
+                "requests",
+                "users",
+                "touch-user.request.yaml",
+              ),
+              hash: "request-hash",
+              method: "POST",
+              url: "{{baseUrl}}/users/{{userId}}/touch",
+              defaults: {},
+              headers: {},
+              headerBlocks: [],
+              expect: {},
+              extract: {},
+            },
+          },
+        ],
+        createdAt: "2026-04-11T00:00:00.000Z",
+      },
+      stepRecords: {
+        login: {
+          stepId: "login",
+          kind: "request",
+          requestId: "auth/login",
+          state: "completed",
+          attempts: [],
+          output: {
+            sessionValue: "secret-token",
+            userName: "Ada",
+          },
+          secretOutputKeys: ["sessionValue"],
+        },
+      },
+      stepOutputs: {
+        login: {
+          sessionValue: "secret-token",
+          userName: "Ada",
+        },
+      },
+      artifactManifestPath: join(
+        projectRoot,
+        "runmark",
+        "artifacts",
+        "history",
+        "run_roundtrip",
+        "manifest.json",
+      ),
+      eventLogPath: join(
+        projectRoot,
+        "runmark",
+        "artifacts",
+        "history",
+        "run_roundtrip",
+        "events.jsonl",
+      ),
+      createdAt: "2026-04-11T00:00:00.000Z",
+      updatedAt: "2026-04-11T00:00:00.000Z",
+    };
+
+    await writeSession(projectRoot, session);
+    const restoredSession = await readSession(projectRoot, session.sessionId);
+
+    assert.equal(restoredSession.stepOutputs.login.sessionValue, "secret-token");
+    assert.equal(
+      restoredSession.stepRecords.login.output.sessionValue,
+      "secret-token",
+    );
+    assert.equal(restoredSession.stepRecords.login.output.userName, "Ada");
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
 });
 
 test("CLI failure mapping preserves documented exit codes", () => {
@@ -701,6 +844,124 @@ test("HTTP requests map slow endpoints to HTTP_REQUEST_FAILED", async () => {
         resolvePromise();
       });
     });
+  }
+});
+
+test("HTTP requests suggest starting the demo server for loopback connection failures", async () => {
+  const originalFetchDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "fetch",
+  );
+
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    writable: true,
+    value: async () => {
+      const cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:4318"), {
+        code: "ECONNREFUSED",
+      });
+      const error = new TypeError("fetch failed");
+      Object.defineProperty(error, "cause", {
+        configurable: true,
+        value: cause,
+      });
+      throw error;
+    },
+  });
+
+  try {
+    await assert.rejects(
+      async () => {
+        await executeHttpRequest(
+          {
+            method: "GET",
+            url: "http://127.0.0.1:4318/ping",
+            headers: {},
+            timeoutMs: 1000,
+          },
+          {
+            requestSummary: true,
+            responseMetadata: true,
+            responseBody: "full",
+            maxBodyBytes: 1024,
+            redactHeaders: [],
+          },
+        );
+      },
+      (error) => {
+        assert(error instanceof RunmarkError);
+        assert.equal(error.code, "HTTP_REQUEST_FAILED");
+        assert.match(error.message, /Cannot connect to http:\/\/127\.0\.0\.1:4318\./);
+        assert.match(error.message, /runmark demo start/);
+        assert(Array.isArray(error.details));
+        assert.match(error.details[0].hint, /local service is running/);
+        return true;
+      },
+    );
+  } finally {
+    if (originalFetchDescriptor) {
+      Object.defineProperty(globalThis, "fetch", originalFetchDescriptor);
+    } else {
+      delete globalThis.fetch;
+    }
+  }
+});
+
+test("HTTP requests suggest starting the demo server for IPv6 loopback connection failures", async () => {
+  const originalFetchDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "fetch",
+  );
+
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    writable: true,
+    value: async () => {
+      const cause = Object.assign(new Error("connect ECONNREFUSED ::1:4318"), {
+        code: "ECONNREFUSED",
+      });
+      const error = new TypeError("fetch failed");
+      Object.defineProperty(error, "cause", {
+        configurable: true,
+        value: cause,
+      });
+      throw error;
+    },
+  });
+
+  try {
+    await assert.rejects(
+      async () => {
+        await executeHttpRequest(
+          {
+            method: "GET",
+            url: "http://[::1]:4318/ping",
+            headers: {},
+            timeoutMs: 1000,
+          },
+          {
+            requestSummary: true,
+            responseMetadata: true,
+            responseBody: "full",
+            maxBodyBytes: 1024,
+            redactHeaders: [],
+          },
+        );
+      },
+      (error) => {
+        assert(error instanceof RunmarkError);
+        assert.equal(error.code, "HTTP_REQUEST_FAILED");
+        assert.match(error.message, /Cannot connect to http:\/\/\[::1\]:4318\./);
+        assert.match(error.message, /runmark demo start/);
+        return true;
+      },
+    );
+  } finally {
+    if (originalFetchDescriptor) {
+      Object.defineProperty(globalThis, "fetch", originalFetchDescriptor);
+    } else {
+      delete globalThis.fetch;
+    }
   }
 });
 

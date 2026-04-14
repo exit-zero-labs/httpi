@@ -5,8 +5,10 @@
  * snapshot compilation, execution, inspection, and resume/cancel semantics.
  */
 import type {
+  AuditExportResult,
   ArtifactListResult,
   ArtifactReadResult,
+  CleanableSessionState,
   DescribeRequestResult,
   DescribeRunResult,
   Diagnostic,
@@ -15,9 +17,10 @@ import type {
   ExplainVariablesResult,
   FlatVariableMap,
   ListDefinitionsResult,
+  RuntimeCleanResult,
   SessionStateResult,
 } from "@exit-zero-labs/runmark-contracts";
-import { isDiagnostic } from "@exit-zero-labs/runmark-contracts";
+import { isDiagnostic, schemaVersion } from "@exit-zero-labs/runmark-contracts";
 import {
   compileRequestSnapshot,
   compileRunSnapshot,
@@ -33,6 +36,9 @@ import {
   readArtifact,
   readSession,
   readStreamChunks,
+  removeRuntimeReports,
+  removeRuntimeSecrets,
+  removeSessionRuntimeState,
   requestSessionCancel,
   type SessionCancelRecord,
   type StreamChunkRange,
@@ -42,6 +48,11 @@ import {
 } from "@exit-zero-labs/runmark-runtime";
 
 export { installSignalCancelHandler } from "@exit-zero-labs/runmark-runtime";
+export {
+  defaultDemoHost,
+  defaultDemoPort,
+  startDemoServer,
+} from "./demo-server.js";
 
 import {
   applyMask,
@@ -127,7 +138,7 @@ export async function acceptSnapshotForStep(
   return { sessionId, stepId, snapshotPath, wrote: true };
 }
 
-import { exitCodes, RunmarkError } from "@exit-zero-labs/runmark-shared";
+import { exitCodes, RunmarkError, toIsoTimestamp } from "@exit-zero-labs/runmark-shared";
 import { describeCompiledStep, selectExplainStep } from "./describe.js";
 import {
   buildCompileOptions,
@@ -436,6 +447,163 @@ export async function getSessionStreamChunks(
   return readStreamChunks(rootDir, sessionId, stepId, options.range);
 }
 
+/** Remove terminal runtime state while preserving tracked project files. */
+export async function cleanProjectRuntime(
+  options: EngineOptions & {
+    sessionId?: string | undefined;
+    states?: CleanableSessionState[] | undefined;
+    keepLast?: number | undefined;
+    olderThanDays?: number | undefined;
+    includeReports?: boolean | undefined;
+    includeSecrets?: boolean | undefined;
+    dryRun?: boolean | undefined;
+  } = {},
+): Promise<RuntimeCleanResult> {
+  const rootDir = await findProjectRoot(options);
+  const sessions = await listSessions(rootDir);
+  if (
+    options.sessionId &&
+    !sessions.some((session) => session.sessionId === options.sessionId)
+  ) {
+    await readSession(rootDir, options.sessionId);
+  }
+  const selectedStates = new Set<CleanableSessionState>(
+    options.states?.length ? options.states : defaultCleanStates,
+  );
+  const dryRun = options.dryRun ?? false;
+  const keepLast = Math.max(0, options.keepLast ?? 0);
+  const cutoff = buildAgeCutoff(options.olderThanDays);
+  const candidates: typeof sessions = [];
+  const keptSessionIds = new Set<string>();
+  const skipped: RuntimeCleanResult["skipped"] = [];
+
+  for (const session of sessions) {
+    if (options.sessionId && session.sessionId !== options.sessionId) {
+      keptSessionIds.add(session.sessionId);
+      continue;
+    }
+    if (!selectedStates.has(session.state as CleanableSessionState)) {
+      keptSessionIds.add(session.sessionId);
+      if (isTerminalCleanState(session.state)) {
+        continue;
+      }
+      skipped.push({
+        sessionId: session.sessionId,
+        reason: `Session state ${session.state} is not a cleanable terminal state.`,
+      });
+      continue;
+    }
+    if (cutoff && Date.parse(session.updatedAt) >= cutoff) {
+      keptSessionIds.add(session.sessionId);
+      skipped.push({
+        sessionId: session.sessionId,
+        reason: `Session is newer than the ${options.olderThanDays}-day cutoff.`,
+      });
+      continue;
+    }
+    candidates.push(session);
+  }
+
+  const removableSessions = candidates.sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
+  for (const retainedSession of removableSessions.slice(0, keepLast)) {
+    keptSessionIds.add(retainedSession.sessionId);
+    skipped.push({
+      sessionId: retainedSession.sessionId,
+      reason: `Kept by --keep-last ${keepLast}.`,
+    });
+  }
+
+  const pendingRemoval = removableSessions.slice(keepLast);
+  const removedSessionIds: string[] = [];
+  const removedPaths: string[] = [];
+
+  if (!dryRun) {
+    for (const session of pendingRemoval) {
+      removedSessionIds.push(session.sessionId);
+      removedPaths.push(
+        ...(await removeSessionRuntimeState(rootDir, session.sessionId)),
+      );
+    }
+  }
+
+  const removedReports =
+    options.includeReports === true && !dryRun
+      ? await removeRuntimeReports(rootDir)
+      : false;
+  const removedSecrets =
+    options.includeSecrets === true && !dryRun
+      ? await removeRuntimeSecrets(rootDir)
+      : false;
+
+  return {
+    rootDir,
+    dryRun,
+    candidateSessionIds: pendingRemoval.map((session) => session.sessionId),
+    removedSessionIds,
+    keptSessionIds: [...keptSessionIds].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    skipped,
+    removedPaths,
+    removedReports,
+    removedSecrets,
+  };
+}
+
+/** Export a redacted audit summary for one session or the entire project. */
+export async function exportProjectAudit(
+  options: EngineOptions & { sessionId?: string | undefined } = {},
+): Promise<AuditExportResult> {
+  const rootDir = await findProjectRoot(options);
+  const sessions = options.sessionId
+    ? [await readSession(rootDir, options.sessionId)]
+    : await Promise.all(
+        (await listSessions(rootDir)).map((session) =>
+          readSession(rootDir, session.sessionId),
+        ),
+      );
+
+  return {
+    schemaVersion,
+    generatedAt: toIsoTimestamp(),
+    rootDir,
+    sessions: await Promise.all(
+      sessions.map(async (session) => {
+        const artifacts = await listArtifacts(rootDir, session.sessionId);
+        const redactedSession = redactSessionForOutput(session);
+        return {
+          sessionId: redactedSession.sessionId,
+          runId: redactedSession.runId,
+          envId: redactedSession.envId,
+          state: redactedSession.state,
+          nextStepId: redactedSession.nextStepId,
+          createdAt: redactedSession.createdAt,
+          updatedAt: redactedSession.updatedAt,
+          ...(redactedSession.pausedReason
+            ? { pausedReason: redactedSession.pausedReason }
+            : {}),
+          ...(redactedSession.failureReason
+            ? { failureReason: redactedSession.failureReason }
+            : {}),
+          artifactManifestPath: redactedSession.artifactManifestPath,
+          eventLogPath: redactedSession.eventLogPath,
+          artifactCounts: countArtifactsByKind(artifacts),
+          artifacts,
+          steps: Object.values(redactedSession.stepRecords).map((stepRecord) => ({
+            stepId: stepRecord.stepId,
+            kind: stepRecord.kind,
+            state: stepRecord.state,
+            ...(stepRecord.requestId ? { requestId: stepRecord.requestId } : {}),
+            attempts: stepRecord.attempts,
+          })),
+        };
+      }),
+    ),
+  };
+}
+
 /**
  * Explain effective variable values and provenance for a request or run step
  * without executing HTTP.
@@ -512,6 +680,59 @@ export async function explainVariables(
       diagnostics: context.project.diagnostics,
     };
   });
+}
+
+const defaultCleanStates: CleanableSessionState[] = [
+  "completed",
+  "failed",
+  "interrupted",
+];
+
+function isTerminalCleanState(state: string): state is CleanableSessionState {
+  return defaultCleanStates.includes(state as CleanableSessionState);
+}
+
+function buildAgeCutoff(olderThanDays: number | undefined): number | undefined {
+  if (olderThanDays === undefined) {
+    return undefined;
+  }
+
+  return Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+}
+
+function countArtifactsByKind(
+  artifacts: ArtifactListResult["artifacts"],
+): AuditExportResult["sessions"][number]["artifactCounts"] {
+  return artifacts.reduce(
+    (result, artifact) => {
+      if (artifact.kind === "request") {
+        result.request += 1;
+        return result;
+      }
+      if (artifact.kind === "body") {
+        result.body += 1;
+        return result;
+      }
+      if (artifact.kind === "stream.chunks") {
+        result.streamChunks += 1;
+        return result;
+      }
+      if (artifact.kind === "stream.assembled") {
+        result.streamAssembled += 1;
+        return result;
+      }
+
+      result.responseBinary += 1;
+      return result;
+    },
+    {
+      request: 0,
+      body: 0,
+      streamChunks: 0,
+      streamAssembled: 0,
+      responseBinary: 0,
+    },
+  );
 }
 
 /** Enrich file-backed diagnostics before surfacing RunmarkError details publicly. */

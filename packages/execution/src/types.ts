@@ -25,6 +25,7 @@ export interface EngineOptions {
 export interface InitProjectResult {
   rootDir: string;
   createdPaths: string[];
+  nextSteps: string[];
 }
 
 /** Loaded tracked project state shared across compile and execution flows. */

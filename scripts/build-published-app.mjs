@@ -52,6 +52,7 @@ await build({
 const readmeSourcePath = await resolveReadmeSource(packageDir, repoRoot);
 await cp(readmeSourcePath, join(publishDir, "README.md"));
 await cp(join(repoRoot, "LICENSE"), join(publishDir, "LICENSE"));
+await cp(join(repoRoot, "CHANGELOG.md"), join(publishDir, "CHANGELOG.md"));
 
 const publishManifest = {
   author: packageJson.author,
@@ -63,8 +64,9 @@ const publishManifest = {
       ? Object.fromEntries(externalDependencies)
       : undefined,
   engines: packageJson.engines,
-  exports: packageJson.main ?? undefined,
-  files: ["dist", "README.md", "LICENSE"],
+  exports: packageJson.exports ?? packageJson.main ?? undefined,
+  files: ["dist", "README.md", "CHANGELOG.md", "LICENSE"],
+  funding: packageJson.funding,
   homepage: packageJson.homepage,
   keywords: packageJson.keywords,
   license: packageJson.license,

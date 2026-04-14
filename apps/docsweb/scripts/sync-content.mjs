@@ -27,11 +27,99 @@ const pages = [
   },
   {
     sourcePath: "docs/product.md",
-    outputName: "product-overview.md",
-    slug: "reference/product-overview",
-    title: "Product overview",
+    outputName: "what-is-runmark.md",
+    slug: "what-is-runmark",
+    title: "What is Runmark?",
     description:
       "What Runmark is, who it is for, and how it differs from GUI-first API tooling.",
+  },
+  {
+    sourcePath: "docs/inspect-and-resume.md",
+    outputName: "inspect-and-resume.md",
+    slug: "guides/inspect-and-resume",
+    title: "Inspect + resume",
+    description:
+      "How paused, failed, and resumed sessions work in practice, including artifact inspection.",
+  },
+  {
+    sourcePath: "docs/examples.md",
+    outputName: "examples.md",
+    slug: "guides/examples",
+    title: "Examples",
+    description:
+      "Recommended starting order plus the full checked-in example catalog.",
+  },
+  {
+    sourcePath: "docs/ci-and-team-adoption.md",
+    outputName: "ci-and-team-adoption.md",
+    slug: "guides/ci-and-team-adoption",
+    title: "CI and team adoption",
+    description:
+      "GitHub Actions, PR review, secret handling, and monorepo patterns for Runmark.",
+  },
+  {
+    sourcePath: "docs/security-and-privacy.md",
+    outputName: "security-and-privacy.md",
+    slug: "trust/security-and-privacy",
+    title: "Security and privacy",
+    description:
+      "What Runmark stores locally, what it redacts, what it does not redact, and how cleanup works.",
+  },
+  {
+    sourcePath: "docs/filesystem-safety.md",
+    outputName: "filesystem-safety.md",
+    slug: "trust/filesystem-safety",
+    title: "Filesystem safety",
+    description:
+      "Project-root containment, symlink rejection, permissions, and runtime file ownership.",
+  },
+  {
+    sourcePath: "docs/unsafe-resume.md",
+    outputName: "unsafe-resume.md",
+    slug: "trust/unsafe-resume",
+    title: "Unsafe resume and exit code 3",
+    description:
+      "Why resume can be blocked, what exit code 3 means, and when to start a fresh run.",
+  },
+  {
+    sourcePath: "docs/external-secret-sources.md",
+    outputName: "external-secret-sources.md",
+    slug: "trust/external-secret-sources",
+    title: "External secret sources",
+    description:
+      "Patterns for environment variables and secret managers in CI or production-style automation.",
+  },
+  {
+    sourcePath: "docs/yaml-reference.md",
+    outputName: "yaml-reference.md",
+    slug: "reference/yaml-reference",
+    title: "YAML reference",
+    description:
+      "Human-readable reference for config, env, request, run, and block YAML files.",
+  },
+  {
+    sourcePath: "docs/cli-reference.md",
+    outputName: "cli-reference.md",
+    slug: "reference/cli-reference",
+    title: "CLI reference",
+    description:
+      "Command-level reference for the Runmark CLI, including lifecycle and MCP entrypoints.",
+  },
+  {
+    sourcePath: "docs/outputs-and-runtime-files.md",
+    outputName: "outputs-and-runtime-files.md",
+    slug: "reference/outputs-and-runtime-files",
+    title: "Outputs and runtime files",
+    description:
+      "Shared CLI/MCP JSON result shapes plus the runtime file layout under runmark/artifacts/.",
+  },
+  {
+    sourcePath: "docs/error-codes.md",
+    outputName: "error-codes.md",
+    slug: "reference/error-codes",
+    title: "Error codes",
+    description:
+      "Process exit codes plus the user-facing diagnostic and runtime error families.",
   },
   {
     sourcePath: "docs/runmark/brand-foundation.md",

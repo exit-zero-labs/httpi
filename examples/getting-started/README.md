@@ -8,8 +8,8 @@ The checked-in `runmark/artifacts/` directory is only there to show the runtime 
 
 ## Setup
 
-1. edit `runmark/env/dev.env.yaml` so `baseUrl` points at your service or mock server
-2. run the starter flow
+1. start `runmark demo start` in another terminal
+2. run the starter flow (the checked-in `runmark/env/dev.env.yaml` already points at the demo server)
 
 ```bash
 runmark validate --project-root examples/getting-started

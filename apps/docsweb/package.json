@@ -2,7 +2,7 @@
   "name": "@exit-zero-labs/runmark-docsweb",
   "private": true,
   "type": "module",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Starlight docs site for Runmark.",
   "license": "MIT",
   "author": "Exit Zero Labs LLC",

@@ -28,7 +28,7 @@ export type DefinitionParser<TValue> = (
 export const defaultCapturePolicy: CapturePolicy = {
   requestSummary: true,
   responseMetadata: true,
-  responseBody: "full",
+  responseBody: "metadata",
   maxBodyBytes: 1024 * 1024,
   redactHeaders: ["authorization", "cookie", "set-cookie"],
 };

@@ -18,15 +18,69 @@ export default defineConfig({
       ],
       sidebar: [
         {
-          label: "Overview",
+          label: "Start here",
           items: [
+            { label: "What is Runmark?", slug: "what-is-runmark" },
             { label: "Quickstart", slug: "guides/quickstart" },
-            { label: "Product overview", slug: "reference/product-overview" },
+            { label: "Inspect + resume", slug: "guides/inspect-and-resume" },
+            { label: "Examples", slug: "guides/examples" },
           ],
         },
         {
-          label: "Runmark",
+          label: "Teams & operations",
           items: [
+            {
+              label: "CI and team adoption",
+              slug: "guides/ci-and-team-adoption",
+            },
+            {
+              label: "Security and privacy",
+              slug: "trust/security-and-privacy",
+            },
+            { label: "Filesystem safety", slug: "trust/filesystem-safety" },
+            {
+              label: "Unsafe resume and exit code 3",
+              slug: "trust/unsafe-resume",
+            },
+            {
+              label: "External secret sources",
+              slug: "trust/external-secret-sources",
+            },
+          ],
+        },
+        {
+          label: "Reference",
+          items: [
+            { label: "YAML reference", slug: "reference/yaml-reference" },
+            { label: "CLI reference", slug: "reference/cli-reference" },
+            {
+              label: "Outputs and runtime files",
+              slug: "reference/outputs-and-runtime-files",
+            },
+            { label: "Error codes", slug: "reference/error-codes" },
+            {
+              label: "Technical architecture",
+              slug: "reference/technical-architecture",
+            },
+            { label: "Changelog", slug: "reference/changelog" },
+          ],
+        },
+        {
+          label: "Advanced",
+          items: [
+            { label: "Agent guide", slug: "guides/agent-guide" },
+            { label: "Migrate from httpi", slug: "guides/migrate-from-httpi" },
+            { label: "Support", slug: "reference/support" },
+            { label: "Roadmap", slug: "reference/roadmap" },
+          ],
+        },
+        {
+          label: "Project docs",
+          items: [
+            {
+              label: "Contributor setup",
+              slug: "guides/contributor-get-started",
+            },
             { label: "Brand foundation", slug: "runmark/brand-foundation" },
             {
               label: "Voice and messaging",
@@ -38,29 +92,6 @@ export default defineConfig({
               label: "Rebrand transition",
               slug: "runmark/rebrand-transition",
             },
-          ],
-        },
-        {
-          label: "Guides",
-          items: [
-            { label: "Migrate from httpi", slug: "guides/migrate-from-httpi" },
-            { label: "Agent guide", slug: "guides/agent-guide" },
-            {
-              label: "Contributor setup",
-              slug: "guides/contributor-get-started",
-            },
-          ],
-        },
-        {
-          label: "Reference",
-          items: [
-            {
-              label: "Technical architecture",
-              slug: "reference/technical-architecture",
-            },
-            { label: "Roadmap", slug: "reference/roadmap" },
-            { label: "Support", slug: "reference/support" },
-            { label: "Changelog", slug: "reference/changelog" },
           ],
         },
       ],

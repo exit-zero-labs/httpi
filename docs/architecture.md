@@ -570,7 +570,7 @@ Initial CLI surface:
 | Command                            | Purpose                                                 |
 | ---------------------------------- | ------------------------------------------------------- |
 | `runmark init`                       | Scaffold required tracked files and update `.gitignore` |
-| `runmark list [requests|runs|envs|sessions]` | Discover project definitions and sessions      |
+| `runmark list <requests|runs|envs|sessions>` | Discover project definitions and sessions      |
 | `runmark validate`                   | Validate definitions and references                     |
 | `runmark describe --request <id>`    | Show resolved request shape without executing           |
 | `runmark describe --run <id>`        | Show compiled run structure and step order              |
@@ -605,7 +605,11 @@ Initial MCP tool surface:
 | `get_session_state` | Read session state and drift info                    |
 | `list_artifacts`    | Enumerate artifacts for a session or step            |
 | `read_artifact`     | Read a captured artifact subject to redaction policy |
+| `get_stream_chunks` | Read captured stream chunk previews for one step     |
+| `cancel_session`    | Interrupt a runnable session without losing evidence |
 | `explain_variables` | Return effective values and provenance               |
+| `export_audit_summary` | Export a redacted audit summary for one or all sessions |
+| `clean_runtime_state` | Remove terminal runtime state with dry-run and retention controls |
 
 ### 11.3 Parity contract
 

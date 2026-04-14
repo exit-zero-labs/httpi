@@ -13,11 +13,11 @@ The checked-in `runmark/artifacts/` directory is only there to show the runtime 
 
 ## Setup
 
-1. edit `runmark/env/dev.env.yaml` so `baseUrl` points at your service or mock server
+1. start `runmark demo start` in another terminal
 2. export `OPS_API_KEY`
 
 ```bash
-export OPS_API_KEY=replace-me
+export OPS_API_KEY=ops-token-secret
 runmark validate --project-root examples/incident-runbook
 runmark describe --run investigate-and-restart --project-root examples/incident-runbook
 runmark run --run investigate-and-restart --project-root examples/incident-runbook

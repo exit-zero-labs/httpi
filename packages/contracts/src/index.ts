@@ -1217,6 +1217,72 @@ export interface ArtifactReadResult {
   base64?: string | undefined;
 }
 
+/** Terminal session states that `runmark clean` is allowed to remove. */
+export type CleanableSessionState = Extract<
+  SessionState,
+  "completed" | "failed" | "interrupted"
+>;
+
+/** Summary of one skipped runtime-clean candidate and why it was preserved. */
+export interface RuntimeCleanSkip {
+  sessionId: string;
+  reason: string;
+}
+
+/** Result returned by runtime cleanup commands. */
+export interface RuntimeCleanResult {
+  rootDir: string;
+  dryRun: boolean;
+  candidateSessionIds: string[];
+  removedSessionIds: string[];
+  keptSessionIds: string[];
+  skipped: RuntimeCleanSkip[];
+  removedPaths: string[];
+  removedReports: boolean;
+  removedSecrets: boolean;
+}
+
+/** Artifact counts grouped by manifest entry kind for one audit export session. */
+export interface AuditArtifactCounts {
+  request: number;
+  body: number;
+  streamChunks: number;
+  streamAssembled: number;
+  responseBinary: number;
+}
+
+/** Redacted audit summary for one persisted session. */
+export interface AuditExportSession {
+  sessionId: string;
+  runId: string;
+  envId: string;
+  state: SessionState;
+  nextStepId?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+  pausedReason?: string | undefined;
+  failureReason?: string | undefined;
+  artifactManifestPath: string;
+  eventLogPath: string;
+  artifactCounts: AuditArtifactCounts;
+  artifacts: ArtifactManifestEntry[];
+  steps: Array<{
+    stepId: string;
+    kind: SessionStepRecord["kind"];
+    state: StepState;
+    requestId?: string | undefined;
+    attempts: StepAttemptRecord[];
+  }>;
+}
+
+/** Exportable project audit summary surfaced by CLI and MCP audit flows. */
+export interface AuditExportResult {
+  schemaVersion: typeof schemaVersion;
+  generatedAt: string;
+  rootDir: string;
+  sessions: AuditExportSession[];
+}
+
 /** Variable provenance result for a request or one run step. */
 export interface ExplainVariablesResult {
   targetId: string;

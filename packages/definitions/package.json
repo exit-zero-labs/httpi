@@ -1,7 +1,7 @@
 {
   "name": "@exit-zero-labs/runmark-definitions",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Definition loading and validation for runmark.",
   "type": "module",
   "license": "MIT",

@@ -1,7 +1,7 @@
 {
   "name": "@exit-zero-labs/runmark",
-  "version": "0.4.0",
-  "description": "runmark CLI and MCP server. `runmark` for humans and scripts, `runmark mcp` for agents.",
+  "version": "0.5.0",
+  "description": "Repo-native HTTP workflows for developers, scripts, and coding agents via the `runmark` CLI and `runmark mcp` stdio server.",
   "type": "module",
   "license": "MIT",
   "author": "Exit Zero Labs LLC",
@@ -13,19 +13,10 @@
   },
   "main": "./dist/index.js",
   "types": "./src/index.ts",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "default": "./dist/index.js"
-    },
-    "./testing": {
-      "default": "./testing.js"
-    }
-  },
+  "exports": "./dist/index.js",
   "files": [
     "dist",
-    "src",
-    "testing.js"
+    "src"
   ],
   "repository": {
     "type": "git",
@@ -35,7 +26,20 @@
   "bugs": {
     "url": "https://github.com/exit-zero-labs/runmark/issues"
   },
-  "homepage": "https://github.com/exit-zero-labs/runmark#readme",
+  "homepage": "https://runmark.exitzerolabs.com",
+  "keywords": [
+    "runmark",
+    "http",
+    "api",
+    "testing",
+    "workflow",
+    "cli",
+    "mcp",
+    "yaml",
+    "automation",
+    "ai",
+    "agent"
+  ],
   "funding": [
     {
       "type": "github",

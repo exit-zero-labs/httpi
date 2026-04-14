@@ -16,6 +16,11 @@ import type { InitProjectResult } from "./types.js";
 
 const schemaBaseUrl =
   "https://raw.githubusercontent.com/exit-zero-labs/runmark/main/packages/contracts/schemas";
+const demoBaseUrl = "http://127.0.0.1:4318";
+const initNextSteps = [
+  "In another terminal: runmark demo start",
+  "Then run: runmark run --run smoke",
+];
 const runtimeGitignoreSentinel = `${runtimeDirectoryName}/*`;
 const runtimeGitignoreBlockLines = [
   "# runmark runtime state",
@@ -105,41 +110,44 @@ export async function initProject(
     ...(await writeTemplateIfMissing(
       rootDir,
       resolveFromRoot(trackedRoot, "config.yaml"),
-      [
-        schemaComment("config.schema.json"),
-        "schemaVersion: 1",
-        `project: ${JSON.stringify(basename(rootDir) || "runmark-project")}`,
-        "defaultEnv: dev",
-        "",
-        "defaults:",
-        "  timeoutMs: 10000",
-        "",
-        "capture:",
-        "  requestSummary: true",
-        "  responseMetadata: true",
-        "  responseBody: full",
-        "  maxBodyBytes: 1048576",
-        "  redactHeaders:",
-        "    - authorization",
-        "    - cookie",
-        "    - set-cookie",
-        "",
-      ].join("\n"),
-    )),
-  );
+        [
+          schemaComment("config.schema.json"),
+          "schemaVersion: 1",
+          `project: ${JSON.stringify(basename(rootDir) || "runmark-project")}`,
+          "defaultEnv: dev",
+          "",
+          "defaults:",
+          "  timeoutMs: 10000",
+          "",
+          "capture:",
+          "  # Prefer metadata-only response capture for first runs: it keeps smoke",
+          "  # checks fast and artifacts small. Switch responseBody to `full` only",
+          "  # when you need stored response bodies or body-based snapshots.",
+          "  requestSummary: true",
+          "  responseMetadata: true",
+          "  responseBody: metadata",
+          "  maxBodyBytes: 1048576",
+          "  redactHeaders:",
+          "    - authorization",
+          "    - cookie",
+          "    - set-cookie",
+          "",
+        ].join("\n"),
+      )),
+    );
   createdPaths.push(
     ...(await writeTemplateIfMissing(
       rootDir,
       resolveFromRoot(trackedRoot, "env", "dev.env.yaml"),
-      [
-        schemaComment("env.schema.json"),
-        "schemaVersion: 1",
-        "title: Development",
-        "values:",
-        "  baseUrl: http://localhost:3000",
-        "",
-      ].join("\n"),
-    )),
+        [
+          schemaComment("env.schema.json"),
+          "schemaVersion: 1",
+          "title: Development",
+          "values:",
+          `  baseUrl: ${demoBaseUrl}`,
+          "",
+        ].join("\n"),
+      )),
   );
   createdPaths.push(
     ...(await writeTemplateIfMissing(
@@ -191,6 +199,7 @@ export async function initProject(
   return {
     rootDir,
     createdPaths,
+    nextSteps: initNextSteps,
   };
 }
 

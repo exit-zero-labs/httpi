@@ -15,6 +15,11 @@ export {
   redactArtifactText,
   writeStepArtifacts,
 } from "./artifacts.js";
+export {
+  removeRuntimeReports,
+  removeRuntimeSecrets,
+  removeSessionRuntimeState,
+} from "./cleanup.js";
 export { detectDefinitionDrift } from "./drift.js";
 export type { RuntimePaths, SessionRuntimePaths } from "./runtime-paths.js";
 export { ensureRuntimePaths } from "./runtime-paths.js";

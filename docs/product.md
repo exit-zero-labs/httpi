@@ -2,8 +2,8 @@
 
 # Runmark - Product Overview
 
-**Status**: Current v0  
-**Audience**: Humans first; still useful context for AI agents  
+**Status**: Pre-1.0  
+**Audience**: Humans first; also useful context for coding agents  
 **Companion docs**: [`architecture.md`](architecture.md), [`archive-architecture.md`](archive-architecture.md), [`idea.md`](idea.md)
 
 ---
@@ -104,9 +104,9 @@ If the primary need is a polished GUI collection editor, hosted collaboration, o
 
 ## 6. The user experience goal
 
-The first useful experience should stay small.
+The first useful experience should stay small and should not require extra infrastructure.
 
-A developer should be able to initialize a project, add one env file, one request file, and one run file, then validate and execute that flow within a few minutes.
+A developer should be able to initialize a project, use the bundled demo API or point one env file at their own service, then validate and execute that flow within a few minutes.
 
 ```text
 runmark/
@@ -124,12 +124,13 @@ The “power-user” experience comes later from composition, not from up-front 
 In practice, the first useful workflow should include:
 
 1. `init`
-2. `validate`
-3. `describe`
-4. `explain variables`
-5. `run`
-6. `session` and `artifacts` inspection
-7. `resume` when a run intentionally pauses
+2. `demo start` (or point `baseUrl` at a real service)
+3. `validate`
+4. `describe`
+5. `explain variables`
+6. `run`
+7. `session` and `artifacts` inspection
+8. `resume` when a run intentionally pauses
 
 ## 7. Core concepts
 
@@ -202,9 +203,9 @@ The initial version is intentionally focused.
 - importers from Postman, Bruno, or OpenAPI
 - broad retry automation
 
-### 0.3.x stability note
+### Pre-1.0 stability note
 
-`runmark` is still pre-1.0, but the current 0.3.x line is intended to keep the core tracked file model, CLI/MCP workflow, example-first reference set, and pause/resume inspection flow recognizable and stable while adoption and hardening work continues.
+`runmark` is still pre-1.0, but the project is intended to keep the core tracked file model, CLI/MCP workflow, example-first reference set, and pause/resume inspection flow recognizable and stable while adoption and hardening work continues.
 
 User-visible changes inside that line are tracked in [`../CHANGELOG.md`](../CHANGELOG.md).
 
