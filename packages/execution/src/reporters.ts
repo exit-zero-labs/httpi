@@ -281,7 +281,7 @@ function renderTap(summary: SessionSummary): string {
       lines.push(`not ok ${number} - ${step.stepId}`);
       if (step.errorMessage) {
         lines.push("  ---");
-        lines.push(`  message: ${step.errorMessage}`);
+        lines.push(`  message: ${JSON.stringify(step.errorMessage)}`);
         lines.push("  ...");
       }
       return;
@@ -306,7 +306,9 @@ function renderGitHubAnnotations(result: ExecutionResult): string {
       parts.push(`col=${diagnostic.column}`);
     parts.push(`title=${diagnostic.code}`);
     const header = parts.length > 0 ? ` ${parts.join(",")}` : "";
-    lines.push(`::${level}${header}::${diagnostic.message.replace(/\n/g, " ")}`);
+    lines.push(
+      `::${level}${header}::${diagnostic.message.replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`,
+    );
   }
   if (lines.length === 0) {
     lines.push("::notice::runmark produced no diagnostics.");

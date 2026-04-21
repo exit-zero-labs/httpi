@@ -295,6 +295,9 @@ Use these guides when the project moves beyond a single laptop:
 | --- | --- |
 | scaffold + demo + run in one command | `quickstart` |
 | scaffold a project | `init` |
+| scaffold a single definition | `new <request\|run\|env\|block\|eval>` |
+| open a definition in $EDITOR | `edit <id>` |
+| validate (CI-friendly alias of `validate`) | `lint` |
 | discover requests, runs, envs, or sessions | `list` |
 | validate before execution | `validate` |
 | inspect a request or run shape | `describe` |
@@ -303,6 +306,7 @@ Use these guides when the project moves beyond a single laptop:
 | inspect a paused or failed session | `session show` |
 | inspect captured request/response evidence | `artifacts list` / `artifacts read` |
 | continue a paused or failed workflow | `resume` |
+| list or run dataset-driven evals | `eval list` / `eval run` |
 
 ## MCP server
 

@@ -200,11 +200,9 @@ function renderEnvTemplate(id: string): string {
 
 function renderHeadersBlockTemplate(id: string): string {
   return [
-    schemaComment("block.headers.schema.json"),
-    "kind: block",
-    "variant: headers",
+    schemaComment("header-block.schema.json"),
     `title: ${humanizeId(id)}`,
-    "values:",
+    "headers:",
     '  accept: "application/json"',
     "",
   ].join("\n");
@@ -212,12 +210,10 @@ function renderHeadersBlockTemplate(id: string): string {
 
 function renderAuthBlockTemplate(id: string): string {
   return [
-    schemaComment("block.auth.schema.json"),
-    "kind: block",
-    "variant: auth",
+    schemaComment("auth-block.schema.json"),
     `title: ${humanizeId(id)}`,
-    "scheme: bearer",
-    "values:",
+    "auth:",
+    "  scheme: bearer",
     "  token: '{{secrets.apiToken}}'",
     "",
   ].join("\n");
@@ -225,7 +221,7 @@ function renderAuthBlockTemplate(id: string): string {
 
 function renderEvalTemplate(id: string): string {
   return [
-    "# yaml-language-server: $schema=https://raw.githubusercontent.com/exit-zero-labs/runmark/main/packages/contracts/schemas/eval.schema.json",
+    "# runmark eval definition (no public JSON schema yet; see `runmark help eval`)",
     "kind: eval",
     "schemaVersion: 1",
     `title: ${humanizeId(id)}`,

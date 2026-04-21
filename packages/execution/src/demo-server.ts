@@ -479,8 +479,18 @@ export async function startDemoServer(options: {
     writeJson(response, 404, { error: "not-found" });
   });
 
-  await new Promise((resolvePromise) => {
-    server.listen(port, host, () => resolvePromise(undefined));
+  await new Promise((resolvePromise, rejectPromise) => {
+    const onError = (err: Error) => {
+      server.off("listening", onListening);
+      rejectPromise(err);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolvePromise(undefined);
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
   });
 
   const address = server.address();

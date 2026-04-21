@@ -97,6 +97,9 @@ export async function quickstartProject(
   }
 
   try {
+    if (initialized && demoBaseUrl) {
+      await syncScaffoldedEnvBaseUrl(rootDir, demoBaseUrl);
+    }
     const runId = await resolveQuickstartRunId(rootDir, options.runId);
     const execution = await callRunRun(runId, rootDir);
     return {
@@ -154,4 +157,31 @@ function isAddressInUseError(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "EADDRINUSE"
   );
+}
+
+/**
+ * When quickstart boots the demo on a non-default host/port, rewrite the
+ * scaffolded dev env so subsequent `runmark run` invocations resolve the same
+ * URL. We only touch the file we just scaffolded (`initialized: true`), so
+ * projects that already had an env file are left alone.
+ */
+async function syncScaffoldedEnvBaseUrl(
+  rootDir: string,
+  baseUrl: string,
+): Promise<void> {
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const envPath = resolve(rootDir, "runmark", "env", "dev.env.yaml");
+  let contents: string;
+  try {
+    contents = await readFile(envPath, "utf8");
+  } catch {
+    return;
+  }
+  const updated = contents.replace(
+    /(^\s*baseUrl:\s*).+$/m,
+    `$1${baseUrl}`,
+  );
+  if (updated !== contents) {
+    await writeFile(envPath, updated, "utf8");
+  }
 }

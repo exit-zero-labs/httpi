@@ -124,7 +124,7 @@ export async function runEval(
     while (true) {
       const index = cursor++;
       if (index >= rows.length) return;
-      const input = rows[index]!;
+      const input = rows[index] as FlatVariableMap;
       const started = Date.now();
       try {
         const execution = await executeRow(target, envId, input, options);
@@ -306,9 +306,9 @@ async function readDataset(
       { exitCode: exitCodes.validationFailure },
     );
   }
-  const raw = await readFile(datasetPath, "utf8");
+  const raw = (await readFile(datasetPath, "utf8")).replace(/^\uFEFF/, "");
   if (dataset.kind === "jsonl") {
-    return raw
+    const rows = raw
       .split(/\r?\n/)
       .filter((line) => line.trim().length > 0)
       .map((line, index) => {
@@ -326,15 +326,29 @@ async function readDataset(
           );
         }
       });
+    if (rows.length === 0) {
+      throw new RunmarkError(
+        "EVAL_DATASET_EMPTY",
+        `Dataset ${dataset.path} contains no rows.`,
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    return rows;
   }
-  const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
-  if (lines.length === 0) return [];
-  const header = splitCsvLine(lines[0]!);
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) {
+    throw new RunmarkError(
+      "EVAL_DATASET_EMPTY",
+      `Dataset ${dataset.path} must contain a header row plus at least one data row.`,
+      { exitCode: exitCodes.validationFailure },
+    );
+  }
+  const header = splitCsvLine(lines[0] ?? "");
   return lines.slice(1).map((line, index) => {
     const values = splitCsvLine(line);
     const row: FlatVariableMap = {};
     for (let i = 0; i < header.length; i++) {
-      const key = header[i]!;
+      const key = header[i] ?? "";
       const raw = values[i] ?? "";
       row[key] = coerceCsvValue(raw);
     }
@@ -368,10 +382,12 @@ function coerceFlatMap(record: Record<string, unknown>): FlatVariableMap {
 
 function splitCsvLine(line: string): string[] {
   const cells: string[] = [];
+  const quotedMask: boolean[] = [];
   let current = "";
+  let cellWasQuoted = false;
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
-    const char = line[i]!;
+    const char = line[i] ?? "";
     if (inQuotes) {
       if (char === '"') {
         if (line[i + 1] === '"') {
@@ -385,15 +401,28 @@ function splitCsvLine(line: string): string[] {
       }
     } else if (char === '"') {
       inQuotes = true;
+      cellWasQuoted = true;
     } else if (char === ",") {
       cells.push(current);
+      quotedMask.push(cellWasQuoted);
       current = "";
+      cellWasQuoted = false;
     } else {
       current += char;
     }
   }
+  if (inQuotes) {
+    throw new RunmarkError(
+      "EVAL_DATASET_ROW_INVALID",
+      `CSV row has an unclosed quote: ${line}`,
+      { exitCode: exitCodes.validationFailure },
+    );
+  }
   cells.push(current);
-  return cells.map((cell) => cell.trim());
+  quotedMask.push(cellWasQuoted);
+  return cells.map((cell, index) =>
+    quotedMask[index] ? cell : cell.trim(),
+  );
 }
 
 function coerceCsvValue(raw: string): FlatVariableValue {

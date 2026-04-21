@@ -6,9 +6,10 @@
  * both humans and CI consumers can grep for a stable location without adding
  * reporter flags.
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { ExecutionResult } from "@exit-zero-labs/runmark-contracts";
+import { writeFileAtomic } from "@exit-zero-labs/runmark-shared";
 import { buildSessionSummary, formatReporter } from "./reporters.js";
 
 export interface WriteSessionSummaryArtifactsResult {
@@ -29,15 +30,13 @@ export async function writeSessionSummaryArtifacts(
   const summary = buildSessionSummary(result);
   const summaryJsonPath = resolve(historyDir, "summary.json");
   const summaryMarkdownPath = resolve(historyDir, "summary.md");
-  await writeFile(
+  await writeFileAtomic(
     summaryJsonPath,
     `${JSON.stringify(summary, null, 2)}\n`,
-    "utf8",
   );
-  await writeFile(
+  await writeFileAtomic(
     summaryMarkdownPath,
     formatReporter("summary", result).content,
-    "utf8",
   );
   return { summaryJsonPath, summaryMarkdownPath };
 }

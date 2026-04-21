@@ -134,7 +134,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     if (!kindArg || !id) {
       throw new RunmarkError(
         "NEW_ARGS_REQUIRED",
-        "Use runmark new <request|run|env|block> <id>. For block, pass --block-kind=headers|auth.",
+        "Use runmark new <request|run|env|block|eval> <id>. For block, pass --block-kind=headers|auth.",
         { exitCode: exitCodes.validationFailure },
       );
     }
@@ -315,8 +315,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
 
   if (command === "describe") {
     const requestId = parsedArgs.flags.request?.[0];
-    const runId = parsedArgs.flags.run?.[0];
+    let runId = parsedArgs.flags.run?.[0];
     assertSingleTarget(requestId, runId, "describe");
+    if (!requestId && !runId) {
+      runId = await resolveSoleRunId(projectRoot, "describe");
+    }
 
     if (requestId) {
       const result = await describeRequest(requestId, {
@@ -356,7 +359,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === "run") {
-    let requestId = parsedArgs.flags.request?.[0];
+    const requestId = parsedArgs.flags.request?.[0];
     let runId = parsedArgs.flags.run?.[0];
     assertSingleTarget(requestId, runId, "run");
     if (!requestId && !runId) {
@@ -749,6 +752,7 @@ Usage:
   runmark new run <id> [--project-root <path>]
   runmark new env <id> [--project-root <path>]
   runmark new block <id> --block-kind <headers|auth> [--project-root <path>]
+  runmark new eval <id> [--project-root <path>]
 
 What it does:
   Scaffolds a tracked YAML definition at the canonical path derived from <id>.
@@ -762,6 +766,7 @@ Examples:
   runmark new run checkout.smoke
   runmark new env staging
   runmark new block default --block-kind headers
+  runmark new eval ping-matrix
 `,
   edit: `runmark edit
 
@@ -1064,6 +1069,7 @@ async function maybeWriteReporter(
     "tap",
     "github",
   ]);
+  const writtenPaths = new Set<string>();
   for (const spec of specs) {
     const [rawFormat, rawPath] = spec.split(":", 2);
     const format = (rawFormat ?? "json").toLowerCase();
@@ -1081,6 +1087,13 @@ async function maybeWriteReporter(
         ? rawPath
         : `runmark/artifacts/reports/${defaultName}.${artifact.extension}`,
     );
+    if (writtenPaths.has(target)) {
+      process.stderr.write(
+        `[runmark] skipping duplicate --reporter path ${target}; an earlier format already claimed it.\n`,
+      );
+      continue;
+    }
+    writtenPaths.add(target);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, artifact.content, "utf8");
     process.stderr.write(
