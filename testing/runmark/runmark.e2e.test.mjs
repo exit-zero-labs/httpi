@@ -512,6 +512,108 @@ test("CLI run with no target picks the sole run and errors clearly when ambiguou
   }
 });
 
+test("CLI new, edit, and lint scaffold definitions and resolve ids", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "runmark-new-"));
+
+  try {
+    const initResult = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "init",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(initResult.code, 0, initResult.stderr);
+
+    const newRequest = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "new",
+      "request",
+      "checkout.ping",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(newRequest.code, 0, newRequest.stderr);
+    const scaffoldInfo = JSON.parse(newRequest.stdout);
+    assert.equal(scaffoldInfo.kind, "request");
+    assert.equal(scaffoldInfo.id, "checkout.ping");
+    const scaffoldedYaml = await readFile(scaffoldInfo.filePath, "utf8");
+    assert.match(scaffoldedYaml, /kind: request/);
+    assert.match(scaffoldedYaml, /title: Checkout Ping/);
+    assert.match(scaffoldInfo.filePath, /checkout\.ping\.request\.yaml$/);
+
+    // Re-running refuses to overwrite.
+    const newRequestAgain = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "new",
+      "request",
+      "checkout.ping",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(newRequestAgain.code, 2);
+    assert.match(newRequestAgain.stderr, /already exists/);
+
+    // Unknown kind surfaces a documented diagnostic.
+    const badKind = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "new",
+      "spaceship",
+      "ignored",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(badKind.code, 2);
+    assert.match(badKind.stderr, /Unknown kind/);
+
+    // Block without --block-kind is rejected.
+    const blockNoKind = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "new",
+      "block",
+      "default",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(blockNoKind.code, 2);
+    assert.match(blockNoKind.stderr, /block-kind/);
+
+    // edit resolves tracked ids and reports the canonical path.
+    const edit = await runNodeProcess(
+      process.execPath,
+      [cliEntrypoint, "edit", "checkout.ping", "--project-root", projectRoot],
+      { env: { ...process.env, EDITOR: "", VISUAL: "" } },
+    );
+    assert.equal(edit.code, 0, edit.stderr);
+    const editInfo = JSON.parse(edit.stdout);
+    assert.equal(editInfo.id, "checkout.ping");
+    assert.equal(editInfo.kind, "request");
+    assert.match(edit.stderr, /Set \$EDITOR/);
+
+    const editMissing = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "edit",
+      "does-not-exist",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(editMissing.code, 2);
+    assert.match(editMissing.stderr, /No tracked definition/);
+
+    // lint exposes the same diagnostics as validate.
+    const lint = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "lint",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(lint.code, 0, lint.stderr);
+    const lintPayload = JSON.parse(lint.stdout);
+    assert.equal(Array.isArray(lintPayload.diagnostics), true);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test("CLI run writes multi-format reporters and always-on summary artifacts", async () => {
   const { server, baseUrl } = await startDemoServer({ port: 0 });
   const projectRoot = await mkdtemp(join(tmpdir(), "runmark-reporters-"));
@@ -693,7 +795,7 @@ test("CLI exposes help and version discovery, including the `runmark mcp` subcom
   assert.match(cliHelp.stdout, /runmark audit export/);
   assert.match(
     cliHelp.stdout,
-    /Examples:\n {2}runmark quickstart\n {2}runmark demo start\n {2}runmark init\n {2}runmark run --run smoke\n {2}runmark mcp/,
+    /Examples:\n {2}runmark quickstart\n {2}runmark new request ping\n {2}runmark demo start\n {2}runmark init\n {2}runmark run --run smoke\n {2}runmark mcp/,
   );
 
   const mcpHelp = await runNodeProcess(process.execPath, [cliEntrypoint, "mcp", "--help"]);

@@ -31,6 +31,7 @@ import {
   resumeSessionRun,
   runRequest,
   runRun,
+  scaffoldDefinition,
   validateProject,
 } from "@exit-zero-labs/runmark-execution";
 import {
@@ -123,6 +124,96 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       `✓ runmark initialized at ${result.rootDir}. Next: runmark quickstart`,
     );
     return exitCodes.success;
+  }
+
+  if (command === "new") {
+    const kindArg = parsedArgs.positionals[1];
+    const id = parsedArgs.positionals[2];
+    if (!kindArg || !id) {
+      throw new RunmarkError(
+        "NEW_ARGS_REQUIRED",
+        "Use runmark new <request|run|env|block> <id>. For block, pass --block-kind=headers|auth.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    if (
+      kindArg !== "request" &&
+      kindArg !== "run" &&
+      kindArg !== "env" &&
+      kindArg !== "block"
+    ) {
+      throw new RunmarkError(
+        "NEW_KIND_UNKNOWN",
+        `Unknown kind "${kindArg}". Expected one of: request, run, env, block.`,
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    const blockKind = parsedArgs.flags["block-kind"]?.[0];
+    const scaffolded = await scaffoldDefinition({
+      kind: kindArg,
+      id,
+      ...(blockKind ? { blockKind } : {}),
+      ...(projectRoot ? { projectRoot } : {}),
+    });
+    process.stdout.write(`${JSON.stringify(scaffolded, null, 2)}\n`);
+    writeStderrHint(
+      `✓ scaffolded ${scaffolded.kind} ${scaffolded.id} → ${scaffolded.filePath}`,
+    );
+    return exitCodes.success;
+  }
+
+  if (command === "edit") {
+    const id = parsedArgs.positionals[1];
+    if (!id) {
+      throw new RunmarkError(
+        "EDIT_ID_REQUIRED",
+        "Use runmark edit <definitionId>. Matches request, run, env, or block ids.",
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    const definitions = await listProjectDefinitions({
+      ...(projectRoot ? { projectRoot } : {}),
+    });
+    const match = findDefinitionPath(definitions, id);
+    if (!match) {
+      throw new RunmarkError(
+        "EDIT_NOT_FOUND",
+        `No tracked definition matches id "${id}". Run runmark list requests|runs|envs to see candidates.`,
+        { exitCode: exitCodes.validationFailure },
+      );
+    }
+    process.stdout.write(
+      `${JSON.stringify({ id, kind: match.kind, filePath: match.filePath }, null, 2)}\n`,
+    );
+    const editor = process.env.EDITOR ?? process.env.VISUAL;
+    if (editor) {
+      const { spawn } = await import("node:child_process");
+      const child = spawn(editor, [match.filePath], { stdio: "inherit" });
+      const code: number = await new Promise((resolveClose) => {
+        child.on("exit", (c) => resolveClose(c ?? 0));
+      });
+      writeStderrHint(`✓ ${editor} exited with code ${code}`);
+      return code === 0 ? exitCodes.success : exitCodes.executionFailure;
+    }
+    writeStderrHint(
+      `Set $EDITOR (or $VISUAL) to auto-open. Path: ${match.filePath}`,
+    );
+    return exitCodes.success;
+  }
+
+  if (command === "lint") {
+    // Lint is validate plus a forward-compat hook; for now we pipe through the
+    // existing validator so CI can pin the same command name as the eventual
+    // richer linter.
+    const validated = await validateProject({
+      ...(projectRoot ? { projectRoot } : {}),
+    });
+    writeDiagnostics(validated.diagnostics);
+    process.stdout.write(`${JSON.stringify(validated, null, 2)}\n`);
+    const hasErrors = validated.diagnostics.some(
+      (diagnostic) => diagnostic.level === "error",
+    );
+    return hasErrors ? exitCodes.validationFailure : exitCodes.success;
   }
 
   if (command === "list") {
@@ -520,6 +611,9 @@ Usage:
   runmark quickstart [--no-demo] [--run <id>] [--host <host>] [--port <port>] [--project-root <path>]
   runmark demo start [--host <host>] [--port <port>]
   runmark init [--project-root <path>]
+  runmark new <request|run|env|block> <id> [--block-kind headers|auth] [--project-root <path>]
+  runmark edit <definitionId> [--project-root <path>]
+  runmark lint [--project-root <path>]
   runmark list <requests|runs|envs|sessions> [--project-root <path>]
   runmark validate [--project-root <path>]
   runmark describe --request <id> [--env <id>] [--input key=value] [--project-root <path>]
@@ -549,6 +643,7 @@ Notes:
 
 Examples:
   runmark quickstart
+  runmark new request ping
   runmark demo start
   runmark init
   runmark run --run smoke
@@ -605,6 +700,53 @@ What it does:
 Examples:
   runmark init
   runmark init --project-root examples/new-project
+`,
+  new: `runmark new
+
+Usage:
+  runmark new request <id> [--project-root <path>]
+  runmark new run <id> [--project-root <path>]
+  runmark new env <id> [--project-root <path>]
+  runmark new block <id> --block-kind <headers|auth> [--project-root <path>]
+
+What it does:
+  Scaffolds a tracked YAML definition at the canonical path derived from <id>.
+  The scaffolded filename preserves the id verbatim (e.g. "checkout.ping" →
+  runmark/requests/checkout.ping.request.yaml) so runmark's path-derived ids
+  stay consistent.
+  Refuses to overwrite existing files.
+
+Examples:
+  runmark new request ping
+  runmark new run checkout.smoke
+  runmark new env staging
+  runmark new block default --block-kind headers
+`,
+  edit: `runmark edit
+
+Usage:
+  runmark edit <definitionId> [--project-root <path>]
+
+What it does:
+  Resolves <definitionId> to its tracked file path. When $EDITOR (or $VISUAL)
+  is set the file is opened immediately; otherwise the path is reported for
+  manual opening.
+
+Examples:
+  runmark edit ping
+  EDITOR=code runmark edit smoke
+`,
+  lint: `runmark lint
+
+Usage:
+  runmark lint [--project-root <path>]
+
+What it does:
+  Validates tracked definitions and surfaces diagnostics with file locations.
+  Exits non-zero when any diagnostic is an error, suitable for CI gates.
+
+Examples:
+  runmark lint
 `,
   list: `runmark list
 
@@ -1260,6 +1402,25 @@ function writeDiagnostics(diagnostics: Diagnostic[]): void {
 /** Emit a one-line human hint to stderr so stdout stays machine-parseable. */
 function writeStderrHint(message: string): void {
   process.stderr.write(`[runmark] ${message}\n`);
+}
+
+type DefinitionListEntry = { id: string; filePath: string };
+type DefinitionList = {
+  requests: DefinitionListEntry[];
+  runs: DefinitionListEntry[];
+  envs: DefinitionListEntry[];
+};
+function findDefinitionPath(
+  definitions: DefinitionList,
+  id: string,
+): { kind: "request" | "run" | "env"; filePath: string } | undefined {
+  const request = definitions.requests.find((entry) => entry.id === id);
+  if (request) return { kind: "request", filePath: request.filePath };
+  const run = definitions.runs.find((entry) => entry.id === id);
+  if (run) return { kind: "run", filePath: run.filePath };
+  const env = definitions.envs.find((entry) => entry.id === id);
+  if (env) return { kind: "env", filePath: env.filePath };
+  return undefined;
 }
 
 function writeRunHint(

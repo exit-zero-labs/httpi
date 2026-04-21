@@ -169,6 +169,12 @@ export type {
   SessionSummary,
 } from "./reporters.js";
 export { writeSessionSummaryArtifacts } from "./session-summary.js";
+export { scaffoldDefinition } from "./scaffold.js";
+export type {
+  ScaffoldKind,
+  ScaffoldOptions,
+  ScaffoldResult,
+} from "./scaffold.js";
 export type { EngineOptions, InitProjectResult } from "./types.js";
 
 /** Discover tracked definitions plus persisted runtime sessions for a project. */
