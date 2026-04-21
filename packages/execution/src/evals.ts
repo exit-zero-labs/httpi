@@ -315,7 +315,9 @@ async function readDataset(
         try {
           const parsed = JSON.parse(line);
           if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            throw new Error("row must be a JSON object");
+            throw new Error(
+              "row must be a JSON object (received array or non-object).",
+            );
           }
           return coerceFlatMap(parsed as Record<string, unknown>);
         } catch (error) {

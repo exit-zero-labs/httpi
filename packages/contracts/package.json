@@ -21,7 +21,8 @@
     "./schemas/header-block.schema.json": "./schemas/header-block.schema.json",
     "./schemas/auth-block.schema.json": "./schemas/auth-block.schema.json",
     "./schemas/request.schema.json": "./schemas/request.schema.json",
-    "./schemas/run.schema.json": "./schemas/run.schema.json"
+    "./schemas/run.schema.json": "./schemas/run.schema.json",
+    "./schemas/eval.schema.json": "./schemas/eval.schema.json"
   },
   "files": [
     "dist",

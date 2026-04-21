@@ -170,18 +170,22 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
     if (!id) {
       throw new RunmarkError(
         "EDIT_ID_REQUIRED",
-        "Use runmark edit <definitionId>. Matches request, run, env, or block ids.",
+        "Use runmark edit <definitionId>. Matches request, run, env, block, or eval ids.",
         { exitCode: exitCodes.validationFailure },
       );
     }
     const definitions = await listProjectDefinitions({
       ...(projectRoot ? { projectRoot } : {}),
     });
-    const match = findDefinitionPath(definitions, id);
+    const match = await findDefinitionPath(
+      definitions,
+      id,
+      projectRoot ?? definitions.rootDir,
+    );
     if (!match) {
       throw new RunmarkError(
         "EDIT_NOT_FOUND",
-        `No tracked definition matches id "${id}". Run runmark list requests|runs|envs to see candidates.`,
+        `No tracked definition matches id "${id}". Searched requests, runs, envs, blocks, and evals.`,
         { exitCode: exitCodes.validationFailure },
       );
     }
@@ -205,9 +209,8 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   }
 
   if (command === "lint") {
-    // Lint is validate plus a forward-compat hook; for now we pipe through the
-    // existing validator so CI can pin the same command name as the eventual
-    // richer linter.
+    // Lint is a CI-facing alias of validate so scripts can pin a stable
+    // name; the output intentionally matches validate byte-for-byte.
     const validated = await validateProject({
       ...(projectRoot ? { projectRoot } : {}),
     });
@@ -788,11 +791,14 @@ Usage:
   runmark lint [--project-root <path>]
 
 What it does:
-  Validates tracked definitions and surfaces diagnostics with file locations.
-  Exits non-zero when any diagnostic is an error, suitable for CI gates.
+  CI-friendly alias of \`runmark validate\`: it walks tracked definitions,
+  surfaces diagnostics with file locations, and exits non-zero when any
+  diagnostic is an error so CI can fail fast. Prefer \`lint\` in automation
+  and \`validate\` in local exploration; the output is identical.
 
 Examples:
   runmark lint
+  runmark lint --project-root examples/getting-started
 `,
   eval: `runmark eval
 
@@ -1484,16 +1490,44 @@ type DefinitionList = {
   runs: DefinitionListEntry[];
   envs: DefinitionListEntry[];
 };
-function findDefinitionPath(
+async function findDefinitionPath(
   definitions: DefinitionList,
   id: string,
-): { kind: "request" | "run" | "env"; filePath: string } | undefined {
+  projectRoot: string,
+): Promise<{ kind: "request" | "run" | "env" | "block" | "eval"; filePath: string } | undefined> {
   const request = definitions.requests.find((entry) => entry.id === id);
   if (request) return { kind: "request", filePath: request.filePath };
   const run = definitions.runs.find((entry) => entry.id === id);
   if (run) return { kind: "run", filePath: run.filePath };
   const env = definitions.envs.find((entry) => entry.id === id);
   if (env) return { kind: "env", filePath: env.filePath };
+  const { stat } = await import("node:fs/promises");
+  const { resolve: resolvePath } = await import("node:path");
+  const scans: Array<{ kind: "block" | "eval"; candidates: string[] }> = [
+    {
+      kind: "block",
+      candidates: [
+        `runmark/blocks/headers/${id}.headers.yaml`,
+        `runmark/blocks/auth/${id}.auth.yaml`,
+        `runmark/blocks/${id}.yaml`,
+      ],
+    },
+    {
+      kind: "eval",
+      candidates: [`runmark/evals/${id}.eval.yaml`],
+    },
+  ];
+  for (const { kind, candidates } of scans) {
+    for (const candidate of candidates) {
+      const filePath = resolvePath(projectRoot, candidate);
+      try {
+        const info = await stat(filePath);
+        if (info.isFile()) return { kind, filePath };
+      } catch {
+        // missing; try next candidate
+      }
+    }
+  }
   return undefined;
 }
 

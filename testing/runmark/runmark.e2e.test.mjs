@@ -722,6 +722,59 @@ test("CLI new, edit, and lint scaffold definitions and resolve ids", async () =>
     assert.equal(lint.code, 0, lint.stderr);
     const lintPayload = JSON.parse(lint.stdout);
     assert.equal(Array.isArray(lintPayload.diagnostics), true);
+
+    // Scaffold a headers block and an eval, then confirm `edit` resolves both.
+    const newBlock = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "new",
+      "block",
+      "default",
+      "--block-kind",
+      "headers",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(newBlock.code, 0, newBlock.stderr);
+    const blockInfo = JSON.parse(newBlock.stdout);
+    assert.match(blockInfo.filePath, /runmark\/blocks\/headers\/default\.headers\.yaml$/);
+    // Scaffolded block must pass `runmark validate` against its live schema.
+    const blockLint = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "lint",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(blockLint.code, 0, blockLint.stderr);
+
+    const newEval = await runNodeProcess(process.execPath, [
+      cliEntrypoint,
+      "new",
+      "eval",
+      "smoke-eval",
+      "--project-root",
+      projectRoot,
+    ]);
+    assert.equal(newEval.code, 0, newEval.stderr);
+
+    const editBlock = await runNodeProcess(
+      process.execPath,
+      [cliEntrypoint, "edit", "default", "--project-root", projectRoot],
+      { env: { ...process.env, EDITOR: "", VISUAL: "" } },
+    );
+    assert.equal(editBlock.code, 0, editBlock.stderr);
+    const editBlockInfo = JSON.parse(editBlock.stdout);
+    assert.equal(editBlockInfo.kind, "block");
+    assert.match(editBlockInfo.filePath, /default\.headers\.yaml$/);
+
+    const editEval = await runNodeProcess(
+      process.execPath,
+      [cliEntrypoint, "edit", "smoke-eval", "--project-root", projectRoot],
+      { env: { ...process.env, EDITOR: "", VISUAL: "" } },
+    );
+    assert.equal(editEval.code, 0, editEval.stderr);
+    const editEvalInfo = JSON.parse(editEval.stdout);
+    assert.equal(editEvalInfo.kind, "eval");
+    assert.match(editEvalInfo.filePath, /smoke-eval\.eval\.yaml$/);
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }

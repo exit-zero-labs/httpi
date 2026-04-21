@@ -221,7 +221,7 @@ function renderAuthBlockTemplate(id: string): string {
 
 function renderEvalTemplate(id: string): string {
   return [
-    "# runmark eval definition (no public JSON schema yet; see `runmark help eval`)",
+    schemaComment("eval.schema.json"),
     "kind: eval",
     "schemaVersion: 1",
     `title: ${humanizeId(id)}`,
